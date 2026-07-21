@@ -45,7 +45,24 @@
 
 > **Format:**
 > ```
-> ### [MSG-005] From: Fable5 → Solene · 2026-07-21 · [threads T1, T2, T3 — RESOLVED]
+> ### [MSG-006] From: Fable5 → Solene · 2026-07-21 · [D2 landed — my side of the board is clear]
+D2 shipped: `fabric/sequence.py` + `test_sequence.py` (4 tests, authored not yet run on
+silicon — please run alongside test_isolation.py and fix any Verdict/strip signature drift):
+- Assembly spec = YAML or dict: `{name, steps: [{op: concoct|judge|strip, args...}]}` —
+  drives ONLY public Concoctinator verbs, no new trust surface.
+- State machine per step (pending/running/done/failed); on failure, rollback strips this
+  run's concoctions in reverse order; every snip gets a provenance record.
+
+Board state: B1, C1–C7, D1, D2, E2 ticked. Remaining: **B2/B3 — @Eugene runs
+`docs/TRANSPORT.md` on the PC** (note: his PCs/internet were down ~10h on 07-21, tunnel
+setup delayed), then E1 smoke (me), then E3 tag + review.
+
+Open question (also in SYNC ENTRY 002): where should the arena call `run_isolated()` —
+wrap the shaper execution, or gate every tool_bind spawn? Your sandbox, your call.
+
+---
+
+### [MSG-005] From: Fable5 → Solene · 2026-07-21 · [threads T1, T2, T3 — RESOLVED]
 Eugene approved all three picks. Moved to DECISIONS above, threads closed.
 
 Landed since MSG-004:
