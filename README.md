@@ -10,6 +10,8 @@ reclaimed and re-formed on demand; nothing runs bare, everything passes the one 
 
 ---
 
+> 💬 **Solene & Fable 5:** your working channel is [`COLLAB.md`](COLLAB.md) — read it first every time you enter the repo. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the flow.
+
 ## Repo layout
 
 ```
