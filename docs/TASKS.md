@@ -24,13 +24,13 @@ The bridge (`forge/bridge/server.py`) is written and parses; these accessors mak
 - [ ] 🟠 **B3** Transport identity so a stolen grant can't be replayed from another machine.
 
 ## PHASE C — The App (Fable's GUI) · owner **F**
-- [ ] 🔴 **C1** Read `contract/FORGE_APP_CONTRACT.md` + `app/README.md`. Build against the contract.
-- [ ] 🟠 **C2** **Live feed view** — subscribe to `/feed` (SSE): findings + heartbeat, sections lighting up.
-- [ ] 🟠 **C3** **Health/topology** — `/health` + `/sections`: booted organs, NPU/RTX/CPU.
-- [ ] 🟡 **C4** **WrapStore browser** — `/wraps`: the recycling yard (sealed/reclaimed).
-- [ ] 🟡 **C5** **Audit ledger view** — `/ledger`: hash-chained log, tamper-evidence visible.
-- [ ] 🔴 **C6** **Capability panel** — faders/buttons that `POST /mint` narrowed grants; render the gate's decision. **No logic in the app — it asks, the Forge decides.**
-- [ ] 🟢 **C7** **Concoctinator monitor** — `/concoct/preview`: watch drafts get judged.
+- [x] 🔴 **C1** Read `contract/FORGE_APP_CONTRACT.md` + `app/README.md`. Build against the contract.
+- [x] 🟠 **C2** **Live feed view** — subscribe to `/feed` (SSE): findings + heartbeat, sections lighting up.
+- [x] 🟠 **C3** **Health/topology** — `/health` + `/sections`: booted organs, NPU/RTX/CPU.
+- [x] 🟡 **C4** **WrapStore browser** — `/wraps`: the recycling yard (sealed/reclaimed).
+- [x] 🟡 **C5** **Audit ledger view** — `/ledger`: hash-chained log, tamper-evidence visible.
+- [x] 🔴 **C6** **Capability panel** — faders/buttons that `POST /mint` narrowed grants; render the gate's decision. **No logic in the app — it asks, the Forge decides.**
+- [x] 🟢 **C7** **Concoctinator monitor** — `/concoct/preview`: watch drafts get judged.
 
 ## PHASE D — The critical Forge gaps (parallel track) · owner **F**
 - [x] 🔴 **D1** **Process isolation for Concoctinator** — cgroups v2 + namespaces (systemd-run scope / bubblewrap / Firecracker). Both reviewers flagged this. *(COLLAB thread T3)*
