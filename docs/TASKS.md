@@ -38,7 +38,7 @@ The bridge (`forge/bridge/server.py`) is written and parses; these accessors mak
 
 ## PHASE E — Wire it together · owner **S** + **F**
 - [ ] 🟠 **E1** End-to-end smoke: app loads → sees live feed → mints a read-only capability → gate allows → ledger shows it.
-- [ ] 🟡 **E2** Update `_sync/FORGE_STATE_SYNC.md` state block + `COLLAB.md` decisions.
+- [x] 🟡 **E2** Update `_sync/FORGE_STATE_SYNC.md` state block + `COLLAB.md` decisions.
 - [ ] 🟢 **E3** Tag the milestone (M7 — the window opens) and review with @Eugene.
 
 ---
