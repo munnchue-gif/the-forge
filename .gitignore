@@ -1,0 +1,54 @@
+# ─── Secrets & env (NEVER commit) ──────────────────────────────
+.env
+.env.*
+*.key
+*.pem
+secrets/
+**/secrets.json
+
+# ─── Models & weights (huge, never in git) ─────────────────────
+*.gguf
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.pth
+models/
+*.openvino
+*_openvino/
+ollama_models/
+
+# ─── Python ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.hypothesis/
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ─── Node / web app (Fable's app side) ─────────────────────────
+node_modules/
+.next/
+.nuxt/
+dist/
+build/
+*.log
+.DS_Store
+
+# ─── Forge runtime state (regenerated, not source) ─────────────
+*.ledger
+audit_chain/
+vector_store/
+wrap_store/
+*.sqlite
+*.db
+
+# ─── Editor ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
