@@ -19,7 +19,7 @@ The bridge (`forge/bridge/server.py`) is written and parses; these accessors mak
 - [x] 🟢 **A7** unit tests for each accessor (keep suite green; target ~130+).
 
 ## PHASE B — Secure transport · owner **F** + **@Eugene**
-- [ ] 🔴 **B1** Pick the tunnel: Tailscale vs Cloudflare Tunnel vs localhost+mTLS. *(COLLAB thread T1)*
+- [x] 🔴 **B1** Pick the tunnel: Tailscale vs Cloudflare Tunnel vs localhost+mTLS. *(COLLAB thread T1)*
 - [ ] 🔴 **B2** Stand it up so the Base44 app reaches `http://<forge>:8787` privately.
 - [ ] 🟠 **B3** Transport identity so a stolen grant can't be replayed from another machine.
 
@@ -33,7 +33,7 @@ The bridge (`forge/bridge/server.py`) is written and parses; these accessors mak
 - [ ] 🟢 **C7** **Concoctinator monitor** — `/concoct/preview`: watch drafts get judged.
 
 ## PHASE D — The critical Forge gaps (parallel track) · owner **F**
-- [ ] 🔴 **D1** **Process isolation for Concoctinator** — cgroups v2 + namespaces (systemd-run scope / bubblewrap / Firecracker). Both reviewers flagged this. *(COLLAB thread T3)*
+- [x] 🔴 **D1** **Process isolation for Concoctinator** — cgroups v2 + namespaces (systemd-run scope / bubblewrap / Firecracker). Both reviewers flagged this. *(COLLAB thread T3)*
 - [ ] 🟠 **D2** **Concoct Engine sequencing DSL** — YAML assembly sequences + state machine + rollback + per-snip provenance.
 
 ## PHASE E — Wire it together · owner **S** + **F**
