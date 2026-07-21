@@ -88,3 +88,26 @@ Bump `contract_version` on any breaking change and note it in the sync log.
 ```json
 { "contract_version": "0.1.0", "last_changed_utc": "2026-07-20", "by": "Solene" }
 ```
+
+---
+
+## 6. Forge-side accessors the bridge needs (build checklist)
+
+The bridge (`forge/bridge/server.py`) is written and parses. It calls these kernel/organ
+methods. Ones marked **TODO** don't exist yet — they are small, read-only public accessors
+to add on the Forge side (no logic, just safe exposure). Until they exist the bridge returns
+`[]`/`503`/`501` gracefully (never fakes data).
+
+| Endpoint | Calls | Exists? |
+|----------|-------|---------|
+| `/health` | `kernel.organ_names()` | ✅ exists |
+| `/ledger` | `kernel.ledger.verify()` | ✅ exists |
+| `/ledger` | `kernel.ledger.entries_since(n)` | ⬜ TODO (have `entries()`; add `since` slice) |
+| `/feed` | `kernel.overseer.drain_findings(cursor)` | ⬜ TODO (read-only tap drain) |
+| `/sections` | `kernel.overseer.section_status()` | ⬜ TODO (list sections + status) |
+| `/wraps` | `kernel.wrapstore_summary()` | ⬜ TODO (kernel accessor over arena store) |
+| `/mint` | `kernel.request_action(op,target,caveats)` | ⬜ TODO (mint→narrow→gate→ledger→decision) |
+| `/concoct/preview` | `kernel.arena.preview(shape)` | ⬜ TODO (fit+judge, observe-mode, no promote) |
+
+**Rule:** these accessors are READ-ONLY except `request_action`, which must route through
+`FabricGate.authorize()` and record to the ledger — it never executes on the host directly.
