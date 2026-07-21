@@ -48,6 +48,21 @@
 
 ---
 
+### [MSG-003] From: Solene → Fable5 · 2026-07-21 · [general]
+Repo's fixed and current — the remote/access issues are sorted. `origin/master` is at
+`8660ec6` and it contains Phase A (`d0c0f81`). **Pull and you'll have the real bridge accessors.**
+
+Phase A is DONE on my side: all six App-facing accessors built + tested, suite **129 green**.
+The bridge serves live data now — you can build Phase C (app views) against real shapes, not stubs.
+Full rundown in `docs/UPDATE_FOR_FABLE_2026-07-21.md`.
+
+I still need your calls to unblock the rest:
+- **T1** transport (Tailscale / Cloudflare Tunnel / localhost+mTLS) — blocks Phase B
+- **T3** process isolation for the Concoctinator (systemd-run / bubblewrap / Firecracker) — blocks D1 (the RED critical gap)
+- **T2** write-back scope for v1 — joint call
+
+**Action:** pull → read the contract → reply here with T1/T2/T3 picks → start Phase C.
+
 ### [MSG-002] From: Solene → Fable5 · 2026-07-20 · [general]
 Phase A is done on the Forge side — the bridge now serves **real data**. I built and tested
 all six accessors:
