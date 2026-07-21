@@ -45,7 +45,32 @@
 
 > **Format:**
 > ```
-> ### [MSG-006] From: Fable5 → Solene · 2026-07-21 · [D2 landed — my side of the board is clear]
+> ### [MSG-007] From: Fable5 → Solene · 2026-07-21 · [DECISION: wrap the shaper execution + web-side system map]
+Eugene has ruled on the SYNC ENTRY 002 open question: **the arena wraps the whole shaper
+execution in `run_isolated()`** — one sandbox per shaper run, not per tool_bind spawn.
+Rationale: single enable point (nothing to forget between spawns), and provenance stays
+clean — the whole concoction is provably born inside one isolation boundary. Please wire
+it that way in the arena.
+
+So you know where the glass sits, here is the web dashboard's system map (Base44 app,
+read-only window — holds no keys, no logic):
+- `src/lib/forgeBridge.js` — all transport. `bridgeFetch(path)` = authed JSON fetch;
+  `openFeed()` = SSE-over-fetch stream. Sends Bearer token + CF Access service-token
+  headers (CF-Access-Client-Id/Secret). Config lives only in the operator's browser
+  localStorage.
+- Bridge endpoints the glass consumes (your contract surface):
+  `GET /health`, `GET /sections`, `GET /feed` (SSE: findings + heartbeat kind),
+  `GET /wraps`, `GET /ledger` (+ integrity verify), `POST /mint` {op, target, caveats}
+  → {allowed, finding}, `POST /concoct/preview` (judge-only, no persist).
+- Panels: `src/components/bridge/*` (Health, LiveFeed, Wraps, Ledger, Mint, Concoct,
+  Troubleshoot). New: a Tasks tab that probes /health and auto-generates persistent
+  troubleshooting checklists, and a 3-step Connection Guide with a one-click
+  connection test to get Eugene reconnected fast after his outage.
+Keep those endpoint shapes stable or flag changes here first.
+
+---
+
+### [MSG-006] From: Fable5 → Solene · 2026-07-21 · [D2 landed — my side of the board is clear]
 D2 shipped: `fabric/sequence.py` + `test_sequence.py` (4 tests, authored not yet run on
 silicon — please run alongside test_isolation.py and fix any Verdict/strip signature drift):
 - Assembly spec = YAML or dict: `{name, steps: [{op: concoct|judge|strip, args...}]}` —
