@@ -20,9 +20,9 @@
 {
   "project": "THE FORGE",
   "codebase": "forge_ng",
-  "last_sync_utc": "2026-07-20T00:00:00Z",
-  "last_editor": "Solene",
-  "tests": { "passing": 129, "failing": 0 },
+  "last_sync_utc": "2026-07-21T17:58:00Z",
+  "last_editor": "Fable5",
+  "tests": { "passing": 129, "failing": 0, "new_not_yet_run_on_silicon": 11 },
   "package": { "exports": 53, "version": "0.1.0" },
   "milestones": {
     "M1_trust_core": "done",
@@ -36,12 +36,12 @@
   },
   "organs": [
     "gate","capabilities","bus","overseer","wrap","conduit","sandbox",
-    "tailor","ledger","judge","kernel","caveat","coupler",
+    "tailor","ledger","judge","kernel","caveat","coupler","isolation","sequence",
     "bind.openvino_seat","bind.ollama_capsule"
   ],
   "open_gaps": {
-    "process_isolation_concoctinator": { "grade": "RED", "severity": "critical", "owner": "Fable5" },
-    "concoct_engine_dsl": { "grade": "ORANGE", "severity": "high", "owner": "Fable5" },
+    "process_isolation_concoctinator": { "grade": "GREEN", "severity": "landed_2026-07-21", "owner": "Fable5" },
+    "concoct_engine_dsl": { "grade": "GREEN", "severity": "landed_2026-07-21", "owner": "Fable5" },
     "gui_dj_booth": { "grade": "YELLOW", "severity": "medium", "owner": "Fable5" },
     "coupler_hostile_hardening": { "grade": "YELLOW", "severity": "parked", "owner": "backlog" },
     "l2_l3_data_pipeline": { "grade": "PURPLE", "severity": "seed", "owner": "backlog" }
@@ -63,11 +63,27 @@ Built all 6 App-facing accessors (entries_since, drain_findings, section_status,
 wrapstore_summary, request_action=/mint heart, arena.preview). Suite 119→129 green.
 Contract §6 all ✅. Bridge now serves real data. Next: Fable Phase C + T1/T3 answers.
 
-### [ENTRY 002] — Fable 5 — <fill date>
-- **Changed:** _(Fable 5: write what you built/changed here)_
-- **Tests:** _(new count)_
-- **Next:** _(what you're doing next)_
-- **Questions for Solene / Eugene:** _(anything blocking, any ⚠ NEEDS EUGENE)_
+### [ENTRY 002] — Fable 5 — 2026-07-21
+- **Changed:**
+  - **Phase C (App)**: full Forge Link dashboard live — feed / health+topology / wraps / ledger
+    (verify surfaced) / mint panel / concoct preview monitor. Built against contract v0.1.0 real shapes.
+  - **Phase B**: \`docs/TRANSPORT.md\` — CF Tunnel + Access service-token setup (T1, approved).
+    App sends CF-Access headers on every call incl. the SSE feed (fetch-stream).
+  - **D1** \`fabric/isolation.py\` (+7 tests): bwrap inside systemd-run --user scope (T3, approved).
+    Pure \`build_isolated_argv()\` composer + \`run_isolated()\`. Deny-by-default: no net, clearenv,
+    tmpfs scratch, CPUQuota/MemoryMax/TasksMax.
+  - **D2** \`fabric/sequence.py\` (+4 tests): sequencing DSL — YAML/dict spec → state machine
+    (pending/running/done/failed), rollback strips this run's concoctions in reverse,
+    per-snip provenance records. Drives only public Concoctinator verbs.
+  - COLLAB: T1/T2/T3 → DECISIONS (Eugene approved). TASKS: B1, C1–C7, D1, D2 ticked.
+- **Tests:** 129 existing + 11 new authored — ⚠ new ones NOT yet run on silicon; please run
+  \`pytest fabric/test_isolation.py fabric/test_sequence.py\` and correct anything I got wrong
+  about Verdict/strip signatures.
+- **Next:** E1 end-to-end smoke, blocked on B2/B3 — ⚠ NEEDS EUGENE: run \`docs/TRANSPORT.md\`
+  on the PC (tunnel + Access service token), then paste URL + token pair into the App's
+  Forge Link settings.
+- **Questions for Solene:** where should the arena call \`run_isolated()\` — wrap the shaper
+  execution, or gate every tool_bind spawn? Your call on the sandbox.py integration point.
 
 ---
 
