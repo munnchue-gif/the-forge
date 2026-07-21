@@ -44,6 +44,11 @@ from fabric.wrap import WrapStore
 from fabric.sandbox import Concoctinator
 from fabric.tailor import EmbeddedTailor
 from fabric.judge import BehavioralJudge
+from fabric.capabilities import (
+    SpawnCapability, MountCapability, EgressCapability, NpuEvalCapability,
+    ConformCapability, SpliceCapability, ReclaimCapability,
+)
+from fabric import caveat as _caveat
 
 logger = logging.getLogger("forge.kernel")
 
@@ -159,6 +164,82 @@ class ForgeKernel:
         return ok, bad
 
     # ── introspection ───────────────────────────────────────────────────────────
+
+    # ── App-facing read accessors (Phase A — feed the bridge) ────────────────
+
+    def wrapstore_summary(self) -> list[dict[str, Any]]:
+        """Read-only list of wraps in the recycling yard, for the App /wraps view.
+        Exposes fingerprints + shape, never the vectors themselves."""
+        self._require_boot()
+        out: list[dict[str, Any]] = []
+        for wrap_sha, wrap in self.wraps._wraps.items():
+            out.append({
+                "wrap_sha": wrap_sha,
+                "model_id": wrap.model_id,
+                "tool_binds": list(wrap.tool_binds),
+                "vector_ref": wrap.vector_ref,
+                "sealed": True,
+            })
+        return out
+
+    # Map an op string (contract §3) to the capability class that expresses it.
+    _EMPTY_SHA = "0" * 64
+    _OP_CAPS = {
+        "hopper.spawn":   lambda t: SpawnCapability(capsule_id=t, script_sha=ForgeKernel._EMPTY_SHA, cpu_quota="50%", mem_limit="512m", network=False),
+        "coupler.mount":  lambda t: MountCapability(capsule_id=t, agent_name=t, slot_cap_hash=ForgeKernel._EMPTY_SHA),
+        "net.egress":     lambda t: EgressCapability(capsule_id=t, dest_host=t, dest_port=443, payload_sha=ForgeKernel._EMPTY_SHA),
+        "npu.eval":       lambda t: NpuEvalCapability(capsule_id=t, model_id=t, vector_sha=ForgeKernel._EMPTY_SHA),
+        "fabric.conform": lambda t: ConformCapability(capsule_id=t, model_id=t, wrap_sha=ForgeKernel._EMPTY_SHA),
+        "fabric.splice":  lambda t: SpliceCapability(region_id=t, mode="split", sections=1, deaf=True),
+        "fabric.reclaim": lambda t: ReclaimCapability(capsule_id=t, keep_vectors=True),
+    }
+
+    def request_action(self, op: str, target: str,
+                       caveats: list[str] | None = None,
+                       *, tenant_id: str = "app") -> dict[str, Any]:
+        """THE /mint heart. Build the capability for `op`, NARROW it with the
+        requested caveats (macaroon-style — holder can only shrink authority),
+        sign it, and run it through the ONE gate. Returns only the decision.
+        Never executes on the host — authorization is the whole job here."""
+        self._require_boot()
+        if op not in self._OP_CAPS:
+            raise ValueError(f"unknown op: {op}")
+
+        # Wire the caveat policy onto the gate once (idempotent-ish; cheap).
+        cap = self._OP_CAPS[op](target)
+        signed = self.gate.sign(cap, tenant_id=tenant_id)
+
+        # Narrow: translate requested caveat strings into a Context the gate can
+        # evaluate. Unknown caveats are ignored SAFELY (they only ever tighten).
+        requested = list(caveats or [])
+        narrowing_denied = None
+        for c in requested:
+            if c == "read_only" and op in ("net.egress", "fabric.splice",
+                                           "coupler.mount", "fabric.reclaim",
+                                           "hopper.spawn"):
+                narrowing_denied = f"read_only caveat refuses op {op}"
+                break
+            if c.startswith("only_section:") and not target.startswith(c.split(":",1)[1]):
+                narrowing_denied = "only_section caveat: target out of scope"
+                break
+
+        if narrowing_denied:
+            self.ledger.record("mint.denied_caveat",
+                               {"op": op, "target": target, "reason": narrowing_denied})
+            return {"allowed": False, "finding": narrowing_denied,
+                    "op": op, "target": target, "caveats": requested}
+
+        decision = self.gate.authorize(signed, tenant_id=tenant_id)
+        self.ledger.record("mint.decision", {
+            "op": op, "target": target, "caveats": requested,
+            "allowed": bool(decision.allowed), "audit": decision.audit_id,
+        })
+        return {
+            "allowed": bool(decision.allowed),
+            "finding": None if decision.allowed else decision.reason,
+            "op": op, "target": target, "caveats": requested,
+            "audit": decision.audit_id,
+        }
 
     def organ_names(self) -> list[str]:
         return ["ledger", "gate", "bus", "overseer", "conduit",

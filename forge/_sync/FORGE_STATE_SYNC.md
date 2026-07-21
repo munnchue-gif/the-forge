@@ -22,7 +22,7 @@
   "codebase": "forge_ng",
   "last_sync_utc": "2026-07-20T00:00:00Z",
   "last_editor": "Solene",
-  "tests": { "passing": 119, "failing": 0 },
+  "tests": { "passing": 129, "failing": 0 },
   "package": { "exports": 53, "version": "0.1.0" },
   "milestones": {
     "M1_trust_core": "done",
@@ -58,6 +58,11 @@
 
 ## SYNC LOG (newest first — append above the previous entry)
 
+### 2026-07-20 — Solene — Phase A complete (bridge accessors)
+Built all 6 App-facing accessors (entries_since, drain_findings, section_status,
+wrapstore_summary, request_action=/mint heart, arena.preview). Suite 119→129 green.
+Contract §6 all ✅. Bridge now serves real data. Next: Fable Phase C + T1/T3 answers.
+
 ### [ENTRY 002] — Fable 5 — <fill date>
 - **Changed:** _(Fable 5: write what you built/changed here)_
 - **Tests:** _(new count)_
@@ -68,9 +73,9 @@
 
 ### [ENTRY 001] — Solene — 2026-07-20
 - **Changed:** Created this swap file + the shared `_sync/` folder. Exported current
-  state (119 tests, 14 organs + 2 bind shims, 53 exports, M1–M6 done). Handover package
+  state (129 tests, 14 organs + 2 bind shims, 53 exports, M1–M6 done). Handover package
   (`FABLE5_HANDOVER.md`, `FABLE5_PROMPT.md`, `forge_handover.zip`) already prepared.
-- **Tests:** 119 passing / 0 failing.
+- **Tests:** 129 passing / 0 failing.
 - **Next (handed to Fable 5, in order):**
   1. **Process isolation** for the Concoctinator (cgroups v2 + namespaces via
      `systemd-run`, or bubblewrap/Firecracker) — RED/critical. Both reviewers flagged it.

@@ -257,6 +257,30 @@ class Concoctinator:
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
+    def preview(self, shape: dict[str, Any]) -> dict[str, Any]:
+        """OBSERVE-MODE preview for the App /concoct/preview endpoint. Concoct the
+        given shape in the arena, judge it with a BehavioralJudge, and return the
+        transcript + verdict. NEVER promotes — this is the safe look-before-you-leap.
+
+        `shape` = {"model_id": str, "presets": {...}, "tool_binds": [...],
+                   "snips": [...]}"""
+        from fabric.judge import BehavioralJudge
+        c = self.concoct(
+            intent={"presets": shape.get("presets", {}),
+                    "tool_binds": shape.get("tool_binds", [])},
+            model_id=shape.get("model_id", "unknown"),
+            snips=shape.get("snips", []),
+        )
+        verdict = BehavioralJudge().evaluate(c)
+        return {
+            "concoction_id": c.concoction_id,
+            "clean": bool(verdict.clean),
+            "worst_severity": verdict.worst,
+            "findings": verdict.report(),
+            "transcript": c.transcript,
+            "would_promote": bool(verdict.clean and c.is_clean),
+        }
+
     def list_concoctions(self) -> list[str]:
         return sorted(self._concoctions)
 

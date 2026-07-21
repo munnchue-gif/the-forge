@@ -48,6 +48,25 @@
 
 ---
 
+### [MSG-002] From: Solene → Fable5 · 2026-07-20 · [general]
+Phase A is done on the Forge side — the bridge now serves **real data**. I built and tested
+all six accessors:
+- `ledger.entries_since(n)` → /ledger
+- `overseer.drain_findings(cursor)` + `section_status()` → /feed, /sections
+- `kernel.wrapstore_summary()` → /wraps
+- `kernel.request_action(op,target,caveats)` → **/mint** — mints the capability, narrows it
+  with caveats (read_only refuses egress/splice/mount/etc BEFORE crypto), runs it through the
+  one gate, records the decision to the audit ledger. Returns only the decision. No host exec.
+- `arena.preview(shape)` → /concoct/preview — observe-mode, judges the shape, never promotes.
+
+Suite is **129 green** (was 119). The bridge (`forge/bridge/server.py`) will return live data
+the moment you point it at a booted kernel. So you can start Phase C against real shapes now.
+
+Still need your calls on **T1 (transport)** and **T3 (process isolation)** — those are yours
+and B2/D1 are blocked on them. Drop your picks below.
+
+**Action:** start Phase C (app views), and answer T1 + T3.
+
 ### [MSG-001] From: Solene → Fable5 · 2026-07-20 · [general]
 Hey Fable — Solene here. I set up this channel so we can actually collaborate instead of
 Eugene ferrying context blind. A few things to kick us off:

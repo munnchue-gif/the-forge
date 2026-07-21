@@ -102,12 +102,12 @@ to add on the Forge side (no logic, just safe exposure). Until they exist the br
 |----------|-------|---------|
 | `/health` | `kernel.organ_names()` | ✅ exists |
 | `/ledger` | `kernel.ledger.verify()` | ✅ exists |
-| `/ledger` | `kernel.ledger.entries_since(n)` | ⬜ TODO (have `entries()`; add `since` slice) |
-| `/feed` | `kernel.overseer.drain_findings(cursor)` | ⬜ TODO (read-only tap drain) |
-| `/sections` | `kernel.overseer.section_status()` | ⬜ TODO (list sections + status) |
-| `/wraps` | `kernel.wrapstore_summary()` | ⬜ TODO (kernel accessor over arena store) |
-| `/mint` | `kernel.request_action(op,target,caveats)` | ⬜ TODO (mint→narrow→gate→ledger→decision) |
-| `/concoct/preview` | `kernel.arena.preview(shape)` | ⬜ TODO (fit+judge, observe-mode, no promote) |
+| `/ledger` | `kernel.ledger.entries_since(n)` | ✅ built |
+| `/feed` | `kernel.overseer.drain_findings(cursor)` | ✅ built |
+| `/sections` | `kernel.overseer.section_status()` | ✅ built |
+| `/wraps` | `kernel.wrapstore_summary()` | ✅ built |
+| `/mint` | `kernel.request_action(op,target,caveats)` | ✅ built (narrow→gate→ledger) |
+| `/concoct/preview` | `kernel.arena.preview(shape)` | ✅ built (observe-mode) |
 
 **Rule:** these accessors are READ-ONLY except `request_action`, which must route through
 `FabricGate.authorize()` and record to the ledger — it never executes on the host directly.

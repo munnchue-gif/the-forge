@@ -167,6 +167,8 @@ class Overseer:
         self._gate = gate
         self.watcher = Watcher(bus, evaluator)
         self.commander = Commander(bus, gate, self.watcher.stats)
+        # Rolling read-only history of findings, for the App /feed drain-by-cursor.
+        self._feed_log: list[dict[str, Any]] = []
 
     @property
     def stats(self) -> OverseerStats:
@@ -191,7 +193,26 @@ class Overseer:
     def tick(self) -> list[Finding]:
         """One observation cycle: drain the tap, evaluate, return findings."""
         self.watcher.observe_pending()
-        return self.watcher.evaluate()
+        findings = self.watcher.evaluate()
+        for f in findings:
+            self._feed_log.append(f.as_dict() if hasattr(f, "as_dict") else {
+                "section_id": getattr(f, "section_id", None),
+                "kind": getattr(f, "kind", None),
+                "detail": getattr(f, "detail", None),
+                "severity": getattr(f, "severity", None),
+            })
+        return findings
+
+    def drain_findings(self, cursor: int = 0) -> list[dict[str, Any]]:
+        """Read-only pull of findings recorded since `cursor` (an index into the
+        rolling feed log). The App's /feed calls this each poll. Never mutates."""
+        if cursor < 0:
+            cursor = 0
+        return self._feed_log[cursor:]
+
+    def section_status(self) -> list[dict[str, Any]]:
+        """Current bus sections + basic status for the App's live map."""
+        return [{"section_id": sid, "deaf": True} for sid in self._bus.sections()]
 
     def close(self) -> None:
         self.watcher.close()

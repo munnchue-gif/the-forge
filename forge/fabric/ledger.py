@@ -141,3 +141,11 @@ class AuditLedger:
 
     def entries(self) -> list[LedgerEntry]:
         return list(self._entries)
+
+    def entries_since(self, seq: int = 0) -> list[dict[str, Any]]:
+        """JSON-safe audit entries from `seq` onward — for the App /ledger view.
+        Read-only; returns dicts, not the frozen entries, so nothing downstream
+        can mutate the chain."""
+        if seq < 0:
+            seq = 0
+        return [e.as_dict() for e in self._entries[seq:]]

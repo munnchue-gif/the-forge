@@ -10,13 +10,13 @@
 ## PHASE A — Make the bridge real (Forge side) · owner **S** (Fable may help)
 The bridge (`forge/bridge/server.py`) is written and parses; these accessors make it return real data.
 
-- [ ] 🟠 **A1** `ledger.entries_since(n)` — slice the audit chain from index n. (have `entries()`)
-- [ ] 🟠 **A2** `overseer.drain_findings(cursor)` — read-only pull of new findings since cursor.
-- [ ] 🟡 **A3** `overseer.section_status()` — list live bus sections + status for the map view.
-- [ ] 🟡 **A4** `kernel.wrapstore_summary()` — public read over the arena's wrap store.
-- [ ] 🔴 **A5** `kernel.request_action(op,target,caveats)` — mint → narrow (macaroon) → `gate.authorize()` → record to ledger → return decision. **The heart of /mint. Never executes on host.**
-- [ ] 🟠 **A6** `arena.preview(shape)` — fit + judge a drafted shape in observe-mode, no promote.
-- [ ] 🟢 **A7** unit tests for each accessor (keep suite green; target ~130+).
+- [x] 🟠 **A1** `ledger.entries_since(n)` — slice the audit chain from index n. (have `entries()`)
+- [x] 🟠 **A2** `overseer.drain_findings(cursor)` — read-only pull of new findings since cursor.
+- [x] 🟡 **A3** `overseer.section_status()` — list live bus sections + status for the map view.
+- [x] 🟡 **A4** `kernel.wrapstore_summary()` — public read over the arena's wrap store.
+- [x] 🔴 **A5** `kernel.request_action(op,target,caveats)` — mint → narrow (macaroon) → `gate.authorize()` → record to ledger → return decision. **The heart of /mint. Never executes on host.**
+- [x] 🟠 **A6** `arena.preview(shape)` — fit + judge a drafted shape in observe-mode, no promote.
+- [x] 🟢 **A7** unit tests for each accessor (keep suite green; target ~130+).
 
 ## PHASE B — Secure transport · owner **F** + **@Eugene**
 - [ ] 🔴 **B1** Pick the tunnel: Tailscale vs Cloudflare Tunnel vs localhost+mTLS. *(COLLAB thread T1)*
