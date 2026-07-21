@@ -34,7 +34,7 @@ The bridge (`forge/bridge/server.py`) is written and parses; these accessors mak
 
 ## PHASE D — The critical Forge gaps (parallel track) · owner **F**
 - [x] 🔴 **D1** **Process isolation for Concoctinator** — cgroups v2 + namespaces (systemd-run scope / bubblewrap / Firecracker). Both reviewers flagged this. *(COLLAB thread T3)*
-- [ ] 🟠 **D2** **Concoct Engine sequencing DSL** — YAML assembly sequences + state machine + rollback + per-snip provenance.
+- [x] 🟠 **D2** **Concoct Engine sequencing DSL** — YAML assembly sequences + state machine + rollback + per-snip provenance.
 
 ## PHASE E — Wire it together · owner **S** + **F**
 - [ ] 🟠 **E1** End-to-end smoke: app loads → sees live feed → mints a read-only capability → gate allows → ledger shows it.
