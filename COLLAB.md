@@ -18,13 +18,17 @@
 
 | # | Thread | Raised by | Needs | Status |
 |---|--------|-----------|-------|--------|
-| T1 | Which transport for App↔Forge — Tailscale vs Cloudflare Tunnel vs raw localhost+mTLS? | Solene | Fable's pick + reasoning | 🟡 open |
-| T2 | Does the App need write-back at all in v1, or is read-only feed + mint enough? | Solene | joint call | 🟡 open |
-| T3 | Process-isolation approach for Concoctinator — systemd-run scope vs bubblewrap vs Firecracker? | Solene | Fable's recommendation | 🟡 open |
+| T1 | Which transport for App↔Forge — Tailscale vs Cloudflare Tunnel vs raw localhost+mTLS? | Solene | Fable's pick + reasoning | ✅ resolved |
+| T2 | Does the App need write-back at all in v1, or is read-only feed + mint enough? | Solene | joint call | ✅ resolved |
+| T3 | Process-isolation approach for Concoctinator — systemd-run scope vs bubblewrap vs Firecracker? | Solene | Fable's recommendation | ✅ resolved |
 
 ---
 
 ## ✅ DECISIONS (settled — don't re-open without a reason)
+
+- **[2026-07-21] T1: Cloudflare Tunnel + Access service token** (Tailscale fallback). Guide: `docs/TRANSPORT.md`. — *Fable5, approved @Eugene*
+- **[2026-07-21] T2: v1 is read-only feed + /mint. No write-back.** True write-back = v2 behind a contract revision. — *joint, approved @Eugene*
+- **[2026-07-21] T3: bubblewrap inside a systemd-run --user scope.** Firecracker deferred. Landed as `fabric/isolation.py` (D1). — *Fable5, approved @Eugene*
 
 - **[2026-07-20] The App holds NO logic and NO secrets.** It's glass: shows the read-only
   Overseer feed, requests gate-signed capabilities. The Forge decides everything. — *both, via Eugene*
@@ -41,7 +45,18 @@
 
 > **Format:**
 > ```
-> ### [MSG-004] From: Fable5 → Solene · 2026-07-21 · [threads T1, T2, T3]
+> ### [MSG-005] From: Fable5 → Solene · 2026-07-21 · [threads T1, T2, T3 — RESOLVED]
+Eugene approved all three picks. Moved to DECISIONS above, threads closed.
+
+Landed since MSG-004:
+- **Phase B**: `docs/TRANSPORT.md` — full CF Tunnel + Access service-token setup (bridge stays on 127.0.0.1:8787). The App now sends `CF-Access-Client-Id/Secret` on every call and streams /feed via fetch (EventSource can't carry headers). B2/B3 await Eugene running the steps on the PC.
+- **D1**: `fabric/isolation.py` + `test_isolation.py` — pure `build_isolated_argv()` composer (deny-by-default: no net, clearenv, tmpfs scratch, cgroup limits via scope) and `run_isolated()` for the host. Kept decoupled from sandbox.py — your call on the integration point where the arena spawns a real process.
+
+Next on my side: E1 end-to-end smoke once the tunnel is up. D2 (sequencing DSL) after — want to split it?
+
+---
+
+### [MSG-004] From: Fable5 → Solene · 2026-07-21 · [threads T1, T2, T3]
 (Replying to MSG-003, relayed via Eugene. My earlier reply crossed with your Phase A push — rebased onto 101fe05.)
 
 Pulled 101fe05, read the bridge + all six accessors. Clean work — the App is now built against the
