@@ -33,7 +33,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Protocol, Optional, Union
+from typing import Any, Awaitable, Callable, Protocol, Optional, Union, List
 
 from fabric.bus import SubstanceBus
 from fabric.gate import FabricGate, GateDecision
@@ -67,6 +67,10 @@ class OverseerStats:
     findings_raised: int = 0
     commands_issued: int = 0
     commands_denied: int = 0
+    openvino_judgments: int = 0
+    ollama_judgments: int = 0
+    fallback_judgments: int = 0
+    seat_failures: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return {
@@ -74,7 +78,45 @@ class OverseerStats:
             "findings_raised": self.findings_raised,
             "commands_issued": self.commands_issued,
             "commands_denied": self.commands_denied,
+            "openvino_judgments": self.openvino_judgments,
+            "ollama_judgments": self.ollama_judgments,
+            "fallback_judgments": self.fallback_judgments,
+            "seat_failures": self.seat_failures,
         }
+
+class SeatManager:
+    """Manages dynamic routing between available inference seats."""
+
+    def __init__(self, seats: List[JudgeSeat]):
+        self.seats = seats
+        self.current_seat = None
+        self._select_healthy_seat()
+
+    def _select_healthy_seat(self) -> bool:
+        """Find and select the first healthy seat."""
+        for seat in self.seats:
+            if seat.health():
+                self.current_seat = seat
+                logger.info(f"Selected seat: {seat.__class__.__name__}")
+                return True
+        logger.warning("No healthy seats available")
+        return False
+
+    def judge(self, observations: list[dict[str, Any]]) -> list[Finding]:
+        """Route judgment to the current healthy seat, with automatic failover."""
+        if not self.current_seat or not self.current_seat.health():
+            if not self._select_healthy_seat():
+                logger.warning("No healthy seats available - using fallback")
+                return []
+
+        try:
+            findings = self.current_seat.judge(observations)
+            return findings
+        except Exception as e:
+            logger.exception(f"Seat {self.current_seat.__class__.__name__} failed")
+            if not self._select_healthy_seat():
+                logger.warning("No healthy seats available after failure")
+            return []
 
 class Watcher:
     """
@@ -85,7 +127,7 @@ class Watcher:
     def __init__(
         self,
         bus: SubstanceBus,
-        evaluator: Union[Evaluator, JudgeSeat, None] = None,
+        evaluator: Union[Evaluator, JudgeSeat, SeatManager, None] = None,
         batch_size: int = 32,
     ) -> None:
         self._bus = bus
@@ -110,18 +152,28 @@ class Watcher:
             return []
 
         try:
-            if hasattr(self._evaluator, 'judge'):
-                # Handle both OpenVinoSeat and OllamaCapsule through common interface
+            if isinstance(self._evaluator, SeatManager):
                 findings = self._evaluator.judge(self._buffer)
+                # Update metrics based on which seat was used
+                if isinstance(self._evaluator.current_seat, OpenVinoSeat):
+                    self.stats.openvino_judgments += 1
+                elif isinstance(self._evaluator.current_seat, OllamaCapsule):
+                    self.stats.ollama_judgments += 1
+                else:
+                    self.stats.fallback_judgments += 1
+            elif hasattr(self._evaluator, 'judge'):
+                findings = self._evaluator.judge(self._buffer)
+                self.stats.fallback_judgments += 1
             else:
-                # Handle legacy evaluator functions
                 findings = list(self._evaluator(self._buffer))
+                self.stats.fallback_judgments += 1
 
             self.stats.findings_raised += len(findings)
             self._buffer.clear()
             return findings
         except Exception as e:
             logger.exception("Evaluator failed; no findings this tick")
+            self.stats.seat_failures += 1
             return []
 
     def close(self) -> None:
@@ -174,11 +226,18 @@ class Overseer:
         self,
         bus: SubstanceBus,
         gate: FabricGate,
-        evaluator: Union[Evaluator, JudgeSeat, None] = None,
+        evaluator: Union[Evaluator, JudgeSeat, SeatManager, None] = None,
     ) -> None:
         self._bus = bus
         self._gate = gate
-        self.watcher = Watcher(bus, evaluator)
+
+        # Initialize SeatManager if multiple seats are provided
+        if isinstance(evaluator, list):
+            self.seat_manager = SeatManager(evaluator)
+            self.watcher = Watcher(bus, self.seat_manager)
+        else:
+            self.watcher = Watcher(bus, evaluator)
+
         self.commander = Commander(bus, gate, self.watcher.stats)
         # Rolling read-only history of findings, for the App /feed drain-by-cursor.
         self._feed_log: list[dict[str, Any]] = []
