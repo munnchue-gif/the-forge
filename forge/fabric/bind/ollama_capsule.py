@@ -16,9 +16,21 @@ import json
 import logging
 import urllib.request
 from dataclasses import dataclass
+from typing import Any, Optional
+
+from fabric.overseer import Finding
 
 logger = logging.getLogger("forge.bind.ollama_capsule")
 
+_JUDGE_PROMPT = """You are the Forge overseer brain. You OBSERVE a local AI
+fabric and report problems. You never act. Given the recent telemetry, list any
+concerns as JSON: a list of objects with keys section, kind, detail, severity
+(0=info,1=low,2=act,3=critical). If nothing is wrong, return [].
+
+TELEMETRY:
+{telemetry}
+
+JSON:"""
 
 @dataclass
 class OllamaCapsule:
@@ -47,11 +59,53 @@ class OllamaCapsule:
             body = json.loads(r.read().decode())
         return body.get("response", "")
 
+    def judge(self, observations: list[dict[str, Any]]) -> list[Finding]:
+        """Run the model to analyze observations and return findings."""
+        if not observations:
+            return []
+
+        telemetry = json.dumps(observations, default=str)[:4000]
+        prompt = _JUDGE_PROMPT.format(telemetry=telemetry)
+
+        try:
+            response = self.generate(prompt, max_tokens=256)
+            return self._parse(response)
+        except Exception:  # noqa: BLE001
+            logger.exception("Ollama judge failed; no findings this tick")
+            return []
+
     def health(self) -> bool:
-        """Is the local Ollama server reachable?"""
+        """Is the local Ollama server reachable and healthy?"""
         try:
             with urllib.request.urlopen(
                     f"http://{self.host}:{self.port}/api/tags", timeout=5) as r:
                 return r.status == 200
         except Exception:  # noqa: BLE001
             return False
+
+    @staticmethod
+    def _parse(raw: str) -> list[Finding]:
+        """Pull the JSON list out of the model's reply, defensively."""
+        text = raw if isinstance(raw, str) else str(raw)
+        start, end = text.find("["), text.rfind("]")
+        if start == -1 or end == -1 or end < start:
+            return []
+        try:
+            items = json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            return []
+        findings: list[Finding] = []
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict):
+                continue
+            try:
+                sev = int(it.get("severity", 1))
+            except (TypeError, ValueError):
+                sev = 1
+            findings.append(Finding(
+                section_id=str(it.get("section", "unknown")),
+                kind=str(it.get("kind", "ollama.concern")),
+                detail=str(it.get("detail", ""))[:500],
+                severity=max(0, min(3, sev)),
+            ))
+        return findings

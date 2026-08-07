@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from fabric.overseer import Finding
 
@@ -31,7 +31,6 @@ TELEMETRY:
 {telemetry}
 
 JSON:"""
-
 
 class OpenVinoSeat:
     """A small model on the Intel NPU acting as the observe-and-judge brain."""
@@ -61,7 +60,7 @@ class OpenVinoSeat:
             self._pipe = ov_genai.LLMPipeline(self.model_dir, "CPU")
             self.device = "CPU"
 
-    def judge(self, observations: list[dict[str, Any]], memory) -> list[Finding]:
+    def judge(self, observations: list[dict[str, Any]]) -> list[Finding]:
         """Run the NPU model over recent telemetry, parse Findings. On any model
         or parse failure, return [] — a broken brain must never fabricate an
         action, and must never take down the heartbeat."""
@@ -77,6 +76,14 @@ class OpenVinoSeat:
             logger.exception("NPU generate failed; no findings this tick")
             return []
         return self._parse(raw)
+
+    def health(self) -> bool:
+        """Check if the model is loaded and ready for inference."""
+        try:
+            self._ensure_pipe()
+            return True
+        except Exception:  # noqa: BLE001
+            return False
 
     @staticmethod
     def _parse(raw: str) -> list[Finding]:

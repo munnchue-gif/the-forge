@@ -33,11 +33,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Protocol, Optional, Union
 
 from fabric.bus import SubstanceBus
 from fabric.gate import FabricGate, GateDecision
 from fabric.capabilities import SpliceCapability
+from fabric.bind.openvino_seat import OpenVinoSeat
+from fabric.bind.ollama_capsule import OllamaCapsule
 
 logger = logging.getLogger("forge_ng.overseer")
 
@@ -46,6 +48,10 @@ logger = logging.getLogger("forge_ng.overseer")
 # side effects — it observes and judges; it never acts. (The Commander acts.)
 Evaluator = Callable[[list[dict[str, Any]]], list["Finding"]]
 
+class JudgeSeat(Protocol):
+    """Common interface for both local and cloud inference seats."""
+    def judge(self, observations: list[dict[str, Any]]) -> list[Finding]: ...
+    def health(self) -> bool: ...
 
 @dataclass(frozen=True, slots=True)
 class Finding:
@@ -54,7 +60,6 @@ class Finding:
     kind: str                 # e.g. "drift", "anomaly", "loop", "ok"
     detail: str
     severity: int = 0         # 0=info .. 3=critical
-
 
 @dataclass
 class OverseerStats:
@@ -71,7 +76,6 @@ class OverseerStats:
             "commands_denied": self.commands_denied,
         }
 
-
 class Watcher:
     """
     Observe-only role. Holds the omnipresent tap, batches events, and runs the
@@ -81,7 +85,7 @@ class Watcher:
     def __init__(
         self,
         bus: SubstanceBus,
-        evaluator: Evaluator | None = None,
+        evaluator: Union[Evaluator, JudgeSeat, None] = None,
         batch_size: int = 32,
     ) -> None:
         self._bus = bus
@@ -104,14 +108,24 @@ class Watcher:
         """Run the evaluator over the buffered observations, then clear."""
         if not self._buffer:
             return []
-        findings = list(self._evaluator(self._buffer))
-        self.stats.findings_raised += len(findings)
-        self._buffer.clear()
-        return findings
+
+        try:
+            if hasattr(self._evaluator, 'judge'):
+                # Handle both OpenVinoSeat and OllamaCapsule through common interface
+                findings = self._evaluator.judge(self._buffer)
+            else:
+                # Handle legacy evaluator functions
+                findings = list(self._evaluator(self._buffer))
+
+            self.stats.findings_raised += len(findings)
+            self._buffer.clear()
+            return findings
+        except Exception as e:
+            logger.exception("Evaluator failed; no findings this tick")
+            return []
 
     def close(self) -> None:
         self._bus.close_tap(self._tap)
-
 
 class Commander:
     """
@@ -150,7 +164,6 @@ class Commander:
                     decision.audit_id, section)
         return decision
 
-
 class Overseer:
     """
     The whole omnipresent watcher: one Watcher (observe) + one Commander (act),
@@ -161,7 +174,7 @@ class Overseer:
         self,
         bus: SubstanceBus,
         gate: FabricGate,
-        evaluator: Evaluator | None = None,
+        evaluator: Union[Evaluator, JudgeSeat, None] = None,
     ) -> None:
         self._bus = bus
         self._gate = gate
