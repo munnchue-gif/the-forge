@@ -42,47 +42,74 @@ class OpenVinoSeat:
         self.max_new_tokens = max_new_tokens
         self.batch_cap = batch_cap
         self._pipe = None  # lazily built on first judge()
+        self._openvino_available = False
+        self._check_openvino()
+
+    def _check_openvino(self):
+        """Check if OpenVINO is available in the environment."""
+        try:
+            from openvino.runtime import Core
+            self._openvino_available = True
+            logger.info("OpenVINO is available")
+        except ImportError:
+            logger.warning("OpenVINO not available - NPU functionality disabled")
+            self._openvino_available = False
 
     def _ensure_pipe(self):
         if self._pipe is not None:
             return
+
+        if not self._openvino_available:
+            raise RuntimeError("OpenVINO not available - cannot initialize NPU pipeline")
+
         try:
-            import openvino_genai as ov_genai  # heavy dep, PC-only
-        except Exception as e:  # noqa: BLE001
+            import openvino_genai as ov_genai
+        except ImportError as e:
             raise RuntimeError(
                 "openvino_genai not installed — run bind/01_setup_npu_openvino.sh"
             ) from e
+
         try:
             self._pipe = ov_genai.LLMPipeline(self.model_dir, self.device)
             logger.info("OpenVinoSeat bound on %s", self.device)
-        except Exception:  # noqa: BLE001 — NPU busy/unavailable → degrade to CPU
-            logger.exception("NPU pipeline failed; falling back to CPU")
-            self._pipe = ov_genai.LLMPipeline(self.model_dir, "CPU")
-            self.device = "CPU"
+        except Exception as e:  # NPU busy/unavailable → degrade to CPU
+            logger.warning("NPU pipeline failed (%s); falling back to CPU", str(e))
+            try:
+                self._pipe = ov_genai.LLMPipeline(self.model_dir, "CPU")
+                self.device = "CPU"
+                logger.info("OpenVinoSeat bound on CPU as fallback")
+            except Exception as cpu_e:
+                logger.error("CPU fallback also failed: %s", str(cpu_e))
+                raise
 
     def judge(self, observations: list[dict[str, Any]]) -> list[Finding]:
         """Run the NPU model over recent telemetry, parse Findings. On any model
         or parse failure, return [] — a broken brain must never fabricate an
         action, and must never take down the heartbeat."""
-        if not observations:
+        if not observations or not self._openvino_available:
             return []
-        self._ensure_pipe()
-        batch = observations[-self.batch_cap:]
-        telemetry = json.dumps(batch, default=str)[:4000]
-        prompt = _JUDGE_PROMPT.format(telemetry=telemetry)
+
         try:
+            self._ensure_pipe()
+            batch = observations[-self.batch_cap:]
+            telemetry = json.dumps(batch, default=str)[:4000]
+            prompt = _JUDGE_PROMPT.format(telemetry=telemetry)
             raw = self._pipe.generate(prompt, max_new_tokens=self.max_new_tokens)
-        except Exception:  # noqa: BLE001
-            logger.exception("NPU generate failed; no findings this tick")
+            return self._parse(raw)
+        except Exception as e:
+            logger.exception("NPU generate failed; no findings this tick: %s", str(e))
             return []
-        return self._parse(raw)
 
     def health(self) -> bool:
         """Check if the model is loaded and ready for inference."""
+        if not self._openvino_available:
+            return False
+
         try:
             self._ensure_pipe()
             return True
-        except Exception:  # noqa: BLE001
+        except Exception as e:
+            logger.debug("Health check failed: %s", str(e))
             return False
 
     @staticmethod

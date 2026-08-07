@@ -1,0 +1,1 @@
+python -c "from openvino.runtime import Core; print('Available devices:', Core().available_devices)"
