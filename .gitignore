@@ -52,3 +52,12 @@ wrap_store/
 .vscode/
 .idea/
 *.swp
+
+# local tool / noise
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v4/
+exit
+stats
+strace.log
+app/
