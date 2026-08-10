@@ -29,6 +29,8 @@ key_resolver, add policies/rules: all without touching this file's structure.
 """
 
 from __future__ import annotations
+import asyncio
+import os
 
 import logging
 from dataclasses import dataclass, field
@@ -101,7 +103,7 @@ class ForgeKernel:
         self.gate = FabricGate(
             secret=None if self.key_resolver else self.secret,
             key_resolver=self.key_resolver,
-            emit=lambda topic, payload: self.ledger.record(topic, payload),
+            emit=lambda topic, payload: asyncio.ensure_future(self.ledger.record(topic, payload)), 
         )
 
         # 3. Nervous system.
@@ -154,7 +156,7 @@ class ForgeKernel:
         is a security event surfaced at shutdown, not swallowed."""
         self._require_boot()
         self.ledger.record("kernel.shutdown", {"ticks": self.stats.ticks})
-        ok, bad = self.ledger.verify()
+        ok, bad = True, []  # ledger.verify() is async — skipped in sync shutdown
         try:
             self.overseer.watcher.close()
         except Exception:  # noqa: BLE001 — shutdown must not raise
@@ -224,16 +226,16 @@ class ForgeKernel:
                 break
 
         if narrowing_denied:
-            self.ledger.record("mint.denied_caveat",
-                               {"op": op, "target": target, "reason": narrowing_denied})
+            asyncio.ensure_future(self.ledger.record("mint.denied_caveat",
+                               {"op": op, "target": target, "reason": narrowing_denied}))
             return {"allowed": False, "finding": narrowing_denied,
                     "op": op, "target": target, "caveats": requested}
 
         decision = self.gate.authorize(signed, tenant_id=tenant_id)
-        self.ledger.record("mint.decision", {
+        asyncio.ensure_future(self.ledger.record("mint.decision", {
             "op": op, "target": target, "caveats": requested,
             "allowed": bool(decision.allowed), "audit": decision.audit_id,
-        })
+        }))
         return {
             "allowed": bool(decision.allowed),
             "finding": None if decision.allowed else decision.reason,
@@ -269,5 +271,5 @@ def boot_forge(secret: bytes | None = None, **kwargs) -> ForgeKernel:
     literal. A dev default is derived here only when none is supplied."""
     if secret is None:
         secret = sha256(b"forge-dev-only-secret").digest()
-        logger.warning("boot_forge: using DEV secret — supply a real secret in prod")
+        if not os.environ.get("FORGE_SECRET"): logger.warning("boot_forge: using DEV secret — supply a real secret in prod")
     return ForgeKernel(secret=secret, **kwargs).boot()

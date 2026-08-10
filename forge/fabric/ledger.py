@@ -1,63 +1,48 @@
 from __future__ import annotations
-
-import logging
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Any, List, Optional, Tuple
 
 logger = logging.getLogger("forge_ng.ledger")
 
-@dataclass(frozen=True, slots=True)
+
 class LedgerEntry:
-    """A single entry in the ledger."""
-    timestamp: float
-    topic: str
-    payload: dict[str, Any]
+    __slots__ = ("timestamp", "topic", "payload")
 
-@dataclass
+    def __init__(self, timestamp: float, topic: str, payload: dict) -> None:
+        self.timestamp = timestamp
+        self.topic = topic
+        self.payload = payload
+
+    def __repr__(self) -> str:
+        return f"LedgerEntry({self.topic!r}, {self.timestamp:.3f})"
+
+
 class AuditLedger:
-    """
-    The ledger is responsible for recording all decisions made by the gate and
-    other components of the system. It provides a way to audit and review these
-    decisions.
-    """
+    def __init__(self, secret: bytes = b"") -> None:
+        self.secret = secret
+        self._entries: List[LedgerEntry] = []
+        self.stats: Any = None
 
-    _entries: List[LedgerEntry] = field(default_factory=list)
-    stats: Any = None  # Assuming this is initialized elsewhere
-
-    async def record(self, topic: str, payload: dict[str, Any]) -> None:
-        """Record a ledger entry."""
-        entry = LedgerEntry(timestamp=time.time(), topic=topic, payload=payload)
+    def record(self, topic: str, payload: dict) -> None:
+        entry = LedgerEntry(time.time(), topic, payload)
         self._entries.append(entry)
-        self.stats.entries += 1
-        await self._flush()
-
-    async def _flush(self) -> None:
-        """Flush the entries to persistent storage (if needed)."""
-        # Placeholder for actual flushing logic
-        pass
+        if self.stats is not None and hasattr(self.stats, "entries"):
+            self.stats.entries += 1
 
     async def entries_since(self, since: float) -> List[LedgerEntry]:
-        """Retrieve entries recorded after a certain timestamp."""
-        return [entry for entry in self._entries if entry.timestamp > since]
+        return [e for e in self._entries if e.timestamp > since]
 
-    async def verify(self) -> Tuple[bool, Optional[str]]:
-        """Verify the integrity of the ledger."""
-        # Placeholder for actual verification logic
-        return True, None
+    async def verify(self) -> Tuple[bool, list]:
+        return True, []
 
     @property
     def size(self) -> int:
-        """Return the number of entries in the ledger."""
         return len(self._entries)
 
     @property
     def head(self) -> Optional[LedgerEntry]:
-        """Return the most recent entry in the ledger."""
-        if self._entries:
-            return self._entries[-1]
-        return None
+        return self._entries[-1] if self._entries else None
 
-    async def close(self) -> None:
-        """Close the ledger and perform any necessary cleanup."""
-        await self._flush()
+    def close(self) -> None:
+        pass

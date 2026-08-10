@@ -7,7 +7,7 @@ on real hardware if they're wrong."""
 from fabric.bind.openvino_seat import OpenVinoSeat
 from fabric.bind.ollama_capsule import OllamaCapsule
 from fabric.conduit import VectorMemory
-from fabric.overseer import Finding
+# from fabric.overseer import Finding
 
 
 # ── OpenVinoSeat: it must satisfy the NpuSeat contract + parse robustly ────────

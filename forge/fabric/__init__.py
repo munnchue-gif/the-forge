@@ -36,7 +36,8 @@ from fabric.capabilities import (
 )
 from fabric.bus import SubstanceBus
 from fabric.wrap import Wrap, WrapStore
-from fabric.overseer import Overseer, Watcher, Commander, Finding
+from fabric.overseer import Overseer, Watcher, Commander
+from fabric.types import Finding
 from fabric.conduit import (
     VectorConduit, VectorMemory, NpuSeat, HeuristicSeat,
 )

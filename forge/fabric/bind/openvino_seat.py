@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from fabric.overseer import Finding
+# # from fabric.types import Finding
 
 logger = logging.getLogger("forge.bind.openvino_seat")
 
@@ -48,7 +48,7 @@ class OpenVinoSeat:
     def _check_openvino(self):
         """Check if OpenVINO is available in the environment."""
         try:
-            from openvino.runtime import Core
+            import openvino as ov
             self._openvino_available = True
             logger.info("OpenVINO is available")
         except ImportError:
@@ -131,6 +131,8 @@ class OpenVinoSeat:
                 sev = int(it.get("severity", 1))
             except (TypeError, ValueError):
                 sev = 1
+            # from fabric.types import Finding
+            from fabric.types import Finding
             findings.append(Finding(
                 section_id=str(it.get("section", "unknown")),
                 kind=str(it.get("kind", "npu.concern")),

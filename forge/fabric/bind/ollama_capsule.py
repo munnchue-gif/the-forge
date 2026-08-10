@@ -18,7 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from fabric.overseer import Finding
+# from fabric.overseer import Finding
 
 logger = logging.getLogger("forge.bind.ollama_capsule")
 
@@ -102,6 +102,7 @@ class OllamaCapsule:
                 sev = int(it.get("severity", 1))
             except (TypeError, ValueError):
                 sev = 1
+            from fabric.overseer import Finding
             findings.append(Finding(
                 section_id=str(it.get("section", "unknown")),
                 kind=str(it.get("kind", "ollama.concern")),
