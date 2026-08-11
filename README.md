@@ -1,49 +1,46 @@
 # THE FORGE
 
-A local-first, security-hardened, **AI-native operating system** built on a zero-trust
-model where raw AI models are treated as hostile, untrusted binaries. Runs on one
-workstation (Intel NPU + NVIDIA RTX + CPU). The "alien substance" — one material,
-reclaimed and re-formed on demand; nothing runs bare, everything passes the one door.
+Local-first, zero-trust AI fabric. Raw models are treated as hostile. Everything passes the Gate.
 
-> Full vision + rules: [`docs/FABLE5_HANDOVER.md`](docs/FABLE5_HANDOVER.md).
-> One-page status: [`docs/FORGE_MASTER_WHITESHEET.md`](docs/FORGE_MASTER_WHITESHEET.md).
+> **Start here:** [`START_HERE.md`](START_HERE.md)
 
----
+## What it does
 
-> 💬 **Solene & Fable 5:** your working channel is [`COLLAB.md`](COLLAB.md) — read it first every time you enter the repo. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the flow.
+Runs on one workstation (NPU + RTX + high RAM). Models are wrapped, sealed, and gated. An Overseer watches. A Commander only acts through the single door. The fabric can splice, recycle, and re-form model substance under strict local control.
 
-## Repo layout
+## Quick map
 
-```
-the-forge/
-├── forge/          ← THE FORGE  (runs on the PC — the local AI fabric)
-│   ├── fabric/         14 organs (gate, overseer, tailor, kernel, …) + tests
-│   ├── bind/           PC-side model-binding scripts (NPU/OpenVINO, RTX/Ollama)
-│   ├── concept_map/    the idea-tree (Obsidian-ready)
-│   └── _sync/          the swap file + state exports (Fable5 ↔ Solene)
-├── app/            ← THE APP    (built by Fable 5 — the window into the Forge)
-│                       thin GUI: live feed + capability controls. NO logic, NO secrets.
-├── contract/       ← THE CONTRACT  (how app ↔ forge talk — build against this)
-│   └── FORGE_APP_CONTRACT.md
-└── docs/           ← handover brief, whitesheet, prompt
-```
+| Path | Role |
+|------|------|
+| `forge/fabric/` | Living organs (gate, overseer, kernel, tailor, conduit, sandbox, …) |
+| `forge/bridge/` | Thin FastAPI surface — the only thing the App talks to |
+| `forge/bind/` | Model binding scripts (OpenVINO NPU, Ollama RTX) |
+| `contract/` | App ↔ Forge contract |
+| `docs/` | Whitesheet, status, handover |
 
-## Who works where
-- **Fable 5** → builds `app/` (the GUI) and may extend `forge/` (with creative license).
-- **Solene** → reviews commits, keeps `forge/` tests green, maintains the contract + sync.
-- **Eugene** → owns the concept/IP; approves trust-boundary changes.
+## Run
 
-## Run the Forge (PC)
 ```bash
 cd forge
-python -m pytest -q      # expect 119 passing
-python __main__.py       # boots the fabric, runs a heartbeat, verifies audit chain
+python -m pytest forge/fabric -q
+python -m bridge.server          # http://127.0.0.1:8787
 ```
 
-## Hard rules
-The gate is the ONE door · models never run bare · brain observes, Commander acts ·
-keep tests green · append to `LEDGER.md` · **nothing thrown away** (archive, don't delete) ·
-silicon: NPU = 1–3B watcher/Whisper/judge (INT4 only), RTX = 7–13B reasoning, iGPU = display.
+`/health` must return `booted: true`.
 
-## Branch flow
-`main` always passes tests. Work on branches; open a PR; the diff is the review surface.
+## Hard rules
+
+- Gate is the one door
+- Models never run bare
+- Watcher observes · Commander acts
+- Nothing thrown away (archive)
+- Secrets stay client-side / env
+- Base44 is glass only — not the spine
+
+## Model protocol
+
+Any model working on this codebase must follow the protocol in the companion repo `forge-copilot` (PRE_PROMPT + MASTER_PROMPT + AI NODE COMMIT LOG). Read `START_HERE.md` first.
+
+## Status
+
+Canonical status lives with the lock docs. Keep the baseline tests green. Prefer small verifiable patches.
