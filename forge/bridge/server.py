@@ -33,18 +33,18 @@ except ImportError as e:  # pragma: no cover - only on the PC
         "Bridge needs FastAPI: pip install fastapi uvicorn pydantic"
     ) from e
 
-# The Forge kernel — the real system. Import guarded so tests can stub it.
+# Prefer the public boot helper. Fall back only if the module shape changes.
 try:
-    from fabric.kernel import ForgeKernel  # type: ignore
+    from fabric.kernel import boot_forge  # type: ignore
 except Exception:  # pragma: no cover
-    ForgeKernel = None  # type: ignore
+    boot_forge = None  # type: ignore
 
 CONTRACT_VERSION = "0.1.0"
 
 app = FastAPI(title="The Forge Bridge", version=CONTRACT_VERSION)
 
-# The App lives on a different origin (Base44). Lock this down to the app's real
-# origin in production; "*" is only acceptable behind an authenticated tunnel.
+# The App lives on a different origin. Lock this down to the app's real origin
+# in production; "*" is only acceptable behind an authenticated tunnel.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -58,11 +58,14 @@ _booted_at: float = 0.0
 
 
 def _boot():
+    """Boot the living kernel. Always go through boot_forge so the required
+    secret is supplied (dev default or FORGE_SECRET). Never call ForgeKernel()
+    bare — it requires `secret`.
+    """
     global _kernel, _booted_at
-    if ForgeKernel is None:
-        raise RuntimeError("fabric.kernel.ForgeKernel not importable")
-    _kernel = ForgeKernel()          # secret/seat wiring happens in kernel config
-    _kernel.boot()
+    if boot_forge is None:
+        raise RuntimeError("fabric.kernel.boot_forge not importable")
+    _kernel = boot_forge()  # uses FORGE_SECRET or safe dev default
     _booted_at = time.time()
 
 
@@ -181,8 +184,8 @@ def _require_boot():
 
 def _adapt(fn, fallback):
     """Call an accessor that may not exist on the kernel yet. Returns fallback
-    (with a note) instead of 500ing, so the App can render a partial dashboard
-    while the Forge side grows the accessor. Every gap is visible, never faked."""
+    instead of 500ing, so the App can render a partial dashboard while the
+    Forge side grows the accessor. Every gap is visible, never faked."""
     try:
         return fn()
     except AttributeError:
