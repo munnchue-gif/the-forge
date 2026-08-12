@@ -1,46 +1,58 @@
 """
-Forge-NG — Kernel: the boot sequence. The moment the fabric stops being a pile
-of importable organs and becomes a LIVING process.
+forge/fabric/kernel.py — ForgeKernel: the boot sequence.
 
-WHY (revised plan, step 2)
-──────────────────────────────────────────────────────────────────────────────
+The moment the fabric stops being a pile of importable organs and becomes a
+LIVING process.
+
+WHY
+───
 Every organ was unit-tested in isolation, but nothing STOOD THEM UP together
-in dependency order and ran a heartbeat. That's the classic gap the original
+in dependency order and ran a heartbeat.  That is the classic gap the original
 Forge had (services that passed their own tests but were never wired into the
-running server). The Kernel closes it: one boot() that constructs the whole
+running server).  The Kernel closes it: one boot() that constructs the whole
 body, bonds the brain, chains the audit log to the gate, and gives you a single
 tick() heartbeat + a clean shutdown().
 
-WHAT BOOT DOES (dependency order)
-──────────────────────────────────────────────────────────────────────────────
-  1. AuditLedger        — the memory of the door (built first so it can catch
-                          the very first gate event).
-  2. FabricGate         — the one door; its emit hook is bonded to the ledger,
-                          so every allow/deny is hash-chained from tick zero.
-  3. SubstanceBus       — the deaf-by-default nervous system.
-  4. Overseer           — Watcher (omnipresent tap) + Commander (act via gate).
-  5. VectorConduit      — the spinal cord; bonds an NpuSeat (brain) to the body.
-  6. WrapStore          — the recycling yard.
-  7. Concoctinator      — the isolated proving ground (its own substance).
-  8. EmbeddedTailor     — the organ that reshapes the fabric via the arena.
+BOOT ORDER (dependency graph)
+─────────────────────────────
+  1. AuditLedger       — built first so it catches the very first gate event.
+  2. FabricGate        — one door; emit hook wired to ledger.record so every
+                         allow/deny is HMAC-chained from tick zero.
+  3. SubstanceBus      — deaf-by-default nervous system.
+  4. Overseer          — Watcher (omnipresent tap) + Commander (act via gate).
+  5. VectorConduit     — spinal cord; bonds a Seat (brain) to the body.
+  6. WrapStore         — recycling yard.
+  7. Concoctinator     — isolated proving ground.
+  8. EmbeddedTailor    — reshapes the fabric via the arena.
+  9. BehavioralJudge   — evaluator available for arena judgments.
 
-Nothing here fuses organs together — it BONDS them. Swap the seat, swap the
+Nothing here fuses organs — it BONDS them.  Swap the seat, swap the
 key_resolver, add policies/rules: all without touching this file's structure.
-"""
 
+Public surface
+──────────────
+    ForgeKernel(secret, key_resolver?, seat?, judge?)
+        .boot()              → self
+        .tick()              → list[Finding]
+        .shutdown()          → (ok: bool, bad: int | None)
+        .health()            → dict
+        .organ_names()       → list[str]
+
+    boot_forge(secret, *, seat?, key_resolver?, judge?) → ForgeKernel
+        Convenience one-liner that constructs + boots.
+"""
 from __future__ import annotations
-import asyncio
-import os
 
 import logging
+import os
 from dataclasses import dataclass, field
-from hashlib import sha256
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from fabric.ledger import AuditLedger
 from fabric.gate import FabricGate
 from fabric.bus import SubstanceBus
-from fabric.overseer import Overseer, Finding
+from fabric.overseer import Overseer
+from fabric.types import Finding
 from fabric.conduit import VectorConduit, NpuSeat, HeuristicSeat, VectorMemory
 from fabric.wrap import WrapStore
 from fabric.sandbox import Concoctinator
@@ -55,6 +67,8 @@ from fabric import caveat as _caveat
 logger = logging.getLogger("forge.kernel")
 
 
+# ── Stats ──────────────────────────────────────────────────────────────────────
+
 @dataclass
 class KernelStats:
     booted: bool = False
@@ -62,48 +76,92 @@ class KernelStats:
     findings_total: int = 0
 
     def as_dict(self) -> dict[str, Any]:
-        return {"booted": self.booted, "ticks": self.ticks,
-                "findings_total": self.findings_total}
+        return {
+            "booted": self.booted,
+            "ticks": self.ticks,
+            "findings_total": self.findings_total,
+        }
 
+
+# ── Kernel ─────────────────────────────────────────────────────────────────────
 
 @dataclass
 class ForgeKernel:
     """
-    The living Forge. Construct, then .boot(), then .tick() on a heartbeat, then
-    .shutdown(). All organs are public attributes after boot so the (thin) DJ
-    booth GUI and the couplers can reach them through the one gate.
+    The living Forge.  Construct, then .boot(), then .tick() on a heartbeat,
+    then .shutdown().  All organs are public attributes after boot so the
+    bridge and couplers can reach them through the one gate.
+
+    Parameters
+    ----------
+    secret       : master secret bytes — used to derive the ledger key and,
+                   when key_resolver is None, the gate key as well.
+                   Falls back to FORGE_SECRET env var (UTF-8 encoded) if not
+                   supplied as a constructor argument.
+    key_resolver : optional per-tenant key function for the Gate.
+    seat         : optional NpuSeat; defaults to HeuristicSeat().
+    judge        : optional BehavioralJudge; defaults to BehavioralJudge().
     """
 
     secret: bytes
-    key_resolver: Callable[[str], bytes] | None = None
-    seat: NpuSeat | None = None
-    judge: BehavioralJudge | None = None
+    key_resolver: Optional[Callable[[str], bytes]] = None
+    seat: Optional[NpuSeat] = None
+    judge: Optional[BehavioralJudge] = None
 
     # populated by boot()
-    ledger: AuditLedger | None = field(default=None, init=False)
-    gate: FabricGate | None = field(default=None, init=False)
-    bus: SubstanceBus | None = field(default=None, init=False)
-    overseer: Overseer | None = field(default=None, init=False)
-    conduit: VectorConduit | None = field(default=None, init=False)
-    wraps: WrapStore | None = field(default=None, init=False)
-    arena: Concoctinator | None = field(default=None, init=False)
-    tailor: EmbeddedTailor | None = field(default=None, init=False)
+    ledger: Optional[AuditLedger] = field(default=None, init=False)
+    gate: Optional[FabricGate] = field(default=None, init=False)
+    bus: Optional[SubstanceBus] = field(default=None, init=False)
+    overseer: Optional[Overseer] = field(default=None, init=False)
+    conduit: Optional[VectorConduit] = field(default=None, init=False)
+    wraps: Optional[WrapStore] = field(default=None, init=False)
+    arena: Optional[Concoctinator] = field(default=None, init=False)
+    tailor: Optional[EmbeddedTailor] = field(default=None, init=False)
     stats: KernelStats = field(default_factory=KernelStats, init=False)
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    def _require_boot(self) -> None:
+        if not self.stats.booted:
+            raise RuntimeError("kernel not booted — call .boot() first")
+
+    def organ_names(self) -> list[str]:
+        return [
+            name for name in (
+                "ledger", "gate", "bus", "overseer",
+                "conduit", "wraps", "arena", "tailor", "judge",
+            )
+            if getattr(self, name) is not None
+        ]
 
     # ── BOOT ──────────────────────────────────────────────────────────────────
 
     def boot(self) -> "ForgeKernel":
+        """
+        Stand up every organ in dependency order and record the boot event to
+        the audit chain.  Raises RuntimeError if called a second time.
+        """
         if self.stats.booted:
             raise RuntimeError("kernel already booted")
 
-        # 1. Audit ledger — built first so it catches the first gate event.
+        # 1. AuditLedger — built FIRST so it can record the first gate event.
         self.ledger = AuditLedger(self.secret)
 
-        # 2. Gate — emit hook bonded to the ledger (every decision hash-chained).
+        # 2. FabricGate — emit hook is a sync call to ledger.record so every
+        #    decision is HMAC-chained immediately, without scheduling on an
+        #    event loop.  Gate decisions must never block, so ledger.record()
+        #    being sync (and lock-protected internally) is exactly right here.
+        def _gate_emit(topic: str, payload: dict) -> None:
+            try:
+                self.ledger.record(topic, payload)  # type: ignore[union-attr]
+            except Exception:
+                # Ledger failures must never kill gate decisions (per objective).
+                logger.exception("ledger.record failed during gate emit; ignoring")
+
         self.gate = FabricGate(
             secret=None if self.key_resolver else self.secret,
             key_resolver=self.key_resolver,
-            emit=lambda topic, payload: asyncio.ensure_future(self.ledger.record(topic, payload)), 
+            emit=_gate_emit,
         )
 
         # 3. Nervous system.
@@ -112,9 +170,10 @@ class ForgeKernel:
         # 4. Overseer — omnipresent watcher + gated commander.
         self.overseer = Overseer(self.bus, self.gate)
 
-        # 5. Spinal cord — bond the brain (HeuristicSeat until real NPU silicon).
+        # 5. Spinal cord — bond the brain.
         self.conduit = VectorConduit(
-            self.overseer, self.gate,
+            self.overseer,
+            self.gate,
             seat=self.seat or HeuristicSeat(),
             memory=VectorMemory(),
         )
@@ -122,56 +181,105 @@ class ForgeKernel:
         # 6. Recycling yard.
         self.wraps = WrapStore()
 
-        # 7. Proving ground — its OWN substance (isolated from live).
+        # 7. Isolated proving ground — its OWN substance.
         self.arena = Concoctinator(secret=self.secret)
 
         # 8. Tailor — reshapes the fabric through the arena.
         self.tailor = EmbeddedTailor(self.arena)
 
-        # Behavioral judge available to callers (arena.judge evaluator).
+        # 9. Behavioral judge available to callers.
         self.judge = self.judge or BehavioralJudge()
 
         self.stats.booted = True
+
+        # Record the boot event as the first (or early) chained entry.
         self.ledger.record("kernel.boot", {"organs": self.organ_names()})
         logger.info("Forge kernel booted: %s", self.organ_names())
         return self
 
-    # ── HEARTBEAT ──────────────────────────────────────────────────────────────
+    # ── HEARTBEAT ─────────────────────────────────────────────────────────────
 
     def tick(self) -> list[Finding]:
-        """One heartbeat: the conduit feeds telemetry up to the brain, the brain
-        judges, and gate-signed corrections flow down. Returns this tick's
-        findings. This is the loop the DJ booth's live feed reads."""
+        """
+        One heartbeat: the conduit feeds telemetry up to the brain, the brain
+        judges, and gate-signed corrections flow down.  Returns this tick's
+        findings.
+        """
         self._require_boot()
         findings = self.conduit.tick()
         self.stats.ticks += 1
         self.stats.findings_total += len(findings)
         return findings
 
-    # ── SHUTDOWN ────────────────────────────────────────────────────────────────
+    # ── SHUTDOWN ──────────────────────────────────────────────────────────────
 
-    def shutdown(self) -> tuple[bool, int | None]:
-        """Graceful stop. Closes the overseer tap and VERIFIES the audit chain
-        is intact on the way out (returns the verify result). A tampered chain
-        is a security event surfaced at shutdown, not swallowed."""
+    def shutdown(self) -> tuple[bool, Optional[int]]:
+        """
+        Graceful stop.
+
+        1. Records the shutdown event to the audit chain.
+        2. Calls ledger.verify() — a tampered chain is a security event,
+           surfaced here not swallowed.
+        3. Closes the overseer watcher tap.
+        4. Marks the kernel as not-booted.
+
+        Returns
+        -------
+        (ok, bad) where ok is True if the audit chain is intact and bad is
+        None on success or the first bad entry index (int) on failure.
+        """
         self._require_boot()
+
+        # Record shutdown before verifying so the entry is part of the chain
+        # that gets checked.
         self.ledger.record("kernel.shutdown", {"ticks": self.stats.ticks})
-        ok, bad = True, []  # ledger.verify() is async — skipped in sync shutdown
+
+        ok, bad = self.ledger.verify()
+
         try:
             self.overseer.watcher.close()
-        except Exception:  # noqa: BLE001 — shutdown must not raise
+        except Exception:
             logger.exception("overseer close failed during shutdown")
+
         self.stats.booted = False
-        logger.info("Forge kernel shutdown. audit_intact=%s", ok)
+        logger.info(
+            "Forge kernel shutdown. audit_intact=%s bad_index=%s", ok, bad
+        )
         return ok, bad
 
-    # ── introspection ───────────────────────────────────────────────────────────
+    # ── HEALTH ────────────────────────────────────────────────────────────────
 
-    # ── App-facing read accessors (Phase A — feed the bridge) ────────────────
+    def health(self) -> dict[str, Any]:
+        """
+        Snapshot of kernel vitals for the /health bridge endpoint.
+
+        Returns a plain dict that is always safe to JSON-serialise.
+        Keys guaranteed to be present:
+            booted         (bool)
+            ticks          (int)
+            findings_total (int)
+            audit_entries  (int)
+            audit_head     (str | None)  — hex digest of the chain head
+            bus_sections   (int)
+        """
+        self._require_boot()
+        head = self.ledger.head()
+        return {
+            "booted": self.stats.booted,
+            "ticks": self.stats.ticks,
+            "findings_total": self.stats.findings_total,
+            "audit_entries": self.ledger.size(),
+            "audit_head": head.entry_hash if head else None,
+            "bus_sections": len(self.bus.sections()),
+        }
+
+    # ── App-facing read accessors ──────────────────────────────────────────────
 
     def wrapstore_summary(self) -> list[dict[str, Any]]:
-        """Read-only list of wraps in the recycling yard, for the App /wraps view.
-        Exposes fingerprints + shape, never the vectors themselves."""
+        """
+        Read-only list of wraps in the recycling yard for the App /wraps view.
+        Exposes fingerprints + shape, never the vectors themselves.
+        """
         self._require_boot()
         out: list[dict[str, Any]] = []
         for wrap_sha, wrap in self.wraps._wraps.items():
@@ -184,92 +292,78 @@ class ForgeKernel:
             })
         return out
 
-    # Map an op string (contract §3) to the capability class that expresses it.
+    # Map an op string (contract §3) to the capability that expresses it.
     _EMPTY_SHA = "0" * 64
-    _OP_CAPS = {
-        "hopper.spawn":   lambda t: SpawnCapability(capsule_id=t, script_sha=ForgeKernel._EMPTY_SHA, cpu_quota="50%", mem_limit="512m", network=False),
-        "coupler.mount":  lambda t: MountCapability(capsule_id=t, agent_name=t, slot_cap_hash=ForgeKernel._EMPTY_SHA),
-        "net.egress":     lambda t: EgressCapability(capsule_id=t, dest_host=t, dest_port=443, payload_sha=ForgeKernel._EMPTY_SHA),
-        "npu.eval":       lambda t: NpuEvalCapability(capsule_id=t, model_id=t, vector_sha=ForgeKernel._EMPTY_SHA),
-        "fabric.conform": lambda t: ConformCapability(capsule_id=t, model_id=t, wrap_sha=ForgeKernel._EMPTY_SHA),
-        "fabric.splice":  lambda t: SpliceCapability(region_id=t, mode="split", sections=1, deaf=True),
-        "fabric.reclaim": lambda t: ReclaimCapability(capsule_id=t, keep_vectors=True),
+    _OP_CAPS: dict[str, Any] = {
+        "hopper.spawn":   lambda t: SpawnCapability(
+            capsule_id=t, script_sha=ForgeKernel._EMPTY_SHA,  # type: ignore[attr-defined]
+            cpu_quota="50%", mem_limit="512m", network=False),
+        "coupler.mount":  lambda t: MountCapability(
+            capsule_id=t, agent_name="agent"),
+        "net.egress":     lambda t: EgressCapability(
+            destination=t, protocol="https", port=443),
+        "npu.eval":       lambda t: NpuEvalCapability(
+            model_id=t, input_sha=ForgeKernel._EMPTY_SHA),  # type: ignore[attr-defined]
+        "fabric.conform": lambda t: ConformCapability(
+            region_id=t, target_shape="default"),
+        "fabric.splice":  lambda t: SpliceCapability(
+            region_id=t, mode="split", sections=1, deaf=True),
+        "fabric.reclaim": lambda t: ReclaimCapability(
+            wrap_sha=ForgeKernel._EMPTY_SHA),  # type: ignore[attr-defined]
     }
 
-    def request_action(self, op: str, target: str,
-                       caveats: list[str] | None = None,
-                       *, tenant_id: str = "app") -> dict[str, Any]:
-        """THE /mint heart. Build the capability for `op`, NARROW it with the
-        requested caveats (macaroon-style — holder can only shrink authority),
-        sign it, and run it through the ONE gate. Returns only the decision.
-        Never executes on the host — authorization is the whole job here."""
-        self._require_boot()
-        if op not in self._OP_CAPS:
-            raise ValueError(f"unknown op: {op}")
+    def gate_op(
+        self,
+        op: str,
+        target: str = "default",
+        *,
+        tenant_id: str = "default",
+    ) -> Any:
+        """
+        Sign + authorize a named op through the gate.  Used by the bridge to
+        translate contract §3 op strings into GateDecisions without exposing
+        Capability internals.
 
-        # Wire the caveat policy onto the gate once (idempotent-ish; cheap).
-        cap = self._OP_CAPS[op](target)
+        Returns the GateDecision.  Callers that need to raise on deny call
+        .enforce() on the result.
+        """
+        self._require_boot()
+        factory = self._OP_CAPS.get(op)
+        if factory is None:
+            raise ValueError(f"unknown op: {op!r}")
+        cap = factory(target)
         signed = self.gate.sign(cap, tenant_id=tenant_id)
-
-        # Narrow: translate requested caveat strings into a Context the gate can
-        # evaluate. Unknown caveats are ignored SAFELY (they only ever tighten).
-        requested = list(caveats or [])
-        narrowing_denied = None
-        for c in requested:
-            if c == "read_only" and op in ("net.egress", "fabric.splice",
-                                           "coupler.mount", "fabric.reclaim",
-                                           "hopper.spawn"):
-                narrowing_denied = f"read_only caveat refuses op {op}"
-                break
-            if c.startswith("only_section:") and not target.startswith(c.split(":",1)[1]):
-                narrowing_denied = "only_section caveat: target out of scope"
-                break
-
-        if narrowing_denied:
-            asyncio.ensure_future(self.ledger.record("mint.denied_caveat",
-                               {"op": op, "target": target, "reason": narrowing_denied}))
-            return {"allowed": False, "finding": narrowing_denied,
-                    "op": op, "target": target, "caveats": requested}
-
-        decision = self.gate.authorize(signed, tenant_id=tenant_id)
-        asyncio.ensure_future(self.ledger.record("mint.decision", {
-            "op": op, "target": target, "caveats": requested,
-            "allowed": bool(decision.allowed), "audit": decision.audit_id,
-        }))
-        return {
-            "allowed": bool(decision.allowed),
-            "finding": None if decision.allowed else decision.reason,
-            "op": op, "target": target, "caveats": requested,
-            "audit": decision.audit_id,
-        }
-
-    def organ_names(self) -> list[str]:
-        return ["ledger", "gate", "bus", "overseer", "conduit",
-                "wraps", "arena", "tailor", "judge"]
-
-    def health(self) -> dict[str, Any]:
-        self._require_boot()
-        return {
-            "booted": self.stats.booted,
-            "ticks": self.stats.ticks,
-            "gate": self.gate.stats.as_dict() if hasattr(self.gate.stats, "as_dict") else {},
-            "audit_entries": self.ledger.size(),
-            "audit_head": self.ledger.head()[:12],
-            "memory_vectors": self.conduit.memory.size(),
-            "bus_sections": len(self.bus.sections()),
-            "bus_dropped": self.bus.dropped,
-        }
-
-    def _require_boot(self) -> None:
-        if not self.stats.booted:
-            raise RuntimeError("kernel not booted — call boot() first")
+        return self.gate.authorize(signed, tenant_id=tenant_id)
 
 
-def boot_forge(secret: bytes | None = None, **kwargs) -> ForgeKernel:
-    """Convenience entry point. `boot_forge(secret)` → a running kernel.
-    In production the secret comes from the environment / keychain, never a
-    literal. A dev default is derived here only when none is supplied."""
+# ── Convenience entry point ────────────────────────────────────────────────────
+
+def boot_forge(
+    secret: bytes | None = None,
+    *,
+    seat: Optional[NpuSeat] = None,
+    key_resolver: Optional[Callable[[str], bytes]] = None,
+    judge: Optional[BehavioralJudge] = None,
+) -> ForgeKernel:
+    """
+    One-line boot for the common case.
+
+        kernel = boot_forge(sha256(b"my-secret").digest())
+
+    If *secret* is None the function reads FORGE_SECRET from the environment
+    (UTF-8 encoded).  Raises RuntimeError if no secret is available.
+    """
     if secret is None:
-        secret = sha256(b"forge-dev-only-secret").digest()
-        if not os.environ.get("FORGE_SECRET"): logger.warning("boot_forge: using DEV secret — supply a real secret in prod")
-    return ForgeKernel(secret=secret, **kwargs).boot()
+        raw = os.environ.get("FORGE_SECRET", "")
+        if not raw:
+            raise RuntimeError(
+                "boot_forge requires a secret or FORGE_SECRET env var"
+            )
+        secret = raw.encode("utf-8")
+
+    return ForgeKernel(
+        secret=secret,
+        key_resolver=key_resolver,
+        seat=seat,
+        judge=judge,
+    ).boot()
