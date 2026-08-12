@@ -66,6 +66,27 @@ from fabric import caveat as _caveat
 
 logger = logging.getLogger("forge.kernel")
 
+# Module-level constants (must not be dataclass fields — mutable defaults are forbidden)
+_EMPTY_SHA = "0" * 64
+
+_OP_CAPS: dict[str, Any] = {
+    "hopper.spawn": lambda t: SpawnCapability(
+        capsule_id=t, script_sha=_EMPTY_SHA,
+        cpu_quota="50%", mem_limit="512m", network=False),
+    "coupler.mount": lambda t: MountCapability(
+        capsule_id=t, agent_name="agent"),
+    "net.egress": lambda t: EgressCapability(
+        destination=t, protocol="https", port=443),
+    "npu.eval": lambda t: NpuEvalCapability(
+        model_id=t, input_sha=_EMPTY_SHA),
+    "fabric.conform": lambda t: ConformCapability(
+        region_id=t, target_shape="default"),
+    "fabric.splice": lambda t: SpliceCapability(
+        region_id=t, mode="split", sections=1, deaf=True),
+    "fabric.reclaim": lambda t: ReclaimCapability(
+        wrap_sha=_EMPTY_SHA),
+}
+
 
 # ── Stats ──────────────────────────────────────────────────────────────────────
 
@@ -292,26 +313,6 @@ class ForgeKernel:
             })
         return out
 
-    # Map an op string (contract §3) to the capability that expresses it.
-    _EMPTY_SHA = "0" * 64
-    _OP_CAPS: dict[str, Any] = {
-        "hopper.spawn":   lambda t: SpawnCapability(
-            capsule_id=t, script_sha=ForgeKernel._EMPTY_SHA,  # type: ignore[attr-defined]
-            cpu_quota="50%", mem_limit="512m", network=False),
-        "coupler.mount":  lambda t: MountCapability(
-            capsule_id=t, agent_name="agent"),
-        "net.egress":     lambda t: EgressCapability(
-            destination=t, protocol="https", port=443),
-        "npu.eval":       lambda t: NpuEvalCapability(
-            model_id=t, input_sha=ForgeKernel._EMPTY_SHA),  # type: ignore[attr-defined]
-        "fabric.conform": lambda t: ConformCapability(
-            region_id=t, target_shape="default"),
-        "fabric.splice":  lambda t: SpliceCapability(
-            region_id=t, mode="split", sections=1, deaf=True),
-        "fabric.reclaim": lambda t: ReclaimCapability(
-            wrap_sha=ForgeKernel._EMPTY_SHA),  # type: ignore[attr-defined]
-    }
-
     def gate_op(
         self,
         op: str,
@@ -328,7 +329,7 @@ class ForgeKernel:
         .enforce() on the result.
         """
         self._require_boot()
-        factory = self._OP_CAPS.get(op)
+        factory = _OP_CAPS.get(op)
         if factory is None:
             raise ValueError(f"unknown op: {op!r}")
         cap = factory(target)
