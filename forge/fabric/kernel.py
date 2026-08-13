@@ -37,6 +37,8 @@ Public surface
         .shutdown()          → (ok: bool, bad: int | None)
         .health()            → dict
         .organ_names()       → list[str]
+        .gate_op(op, target) → GateDecision
+        .request_action(op, target, caveats?) → dict  # bridge /mint
 
     boot_forge(secret, *, seat?, key_resolver?, judge?) → ForgeKernel
         Convenience one-liner that constructs + boots.
@@ -335,6 +337,82 @@ class ForgeKernel:
         cap = factory(target)
         signed = self.gate.sign(cap, tenant_id=tenant_id)
         return self.gate.authorize(signed, tenant_id=tenant_id)
+
+    def request_action(
+        self,
+        op: str,
+        target: str,
+        caveats: list[str] | None = None,
+        *,
+        tenant_id: str = "default",
+    ) -> dict[str, Any]:
+        """
+        Bridge-facing mint path (contract §2 / §3).
+
+        Narrow → sign → authorize through the one Gate → record on the ledger.
+        Never executes host-side work; returns only the gate decision for the App.
+
+        Parameters
+        ----------
+        op       : capability op string (e.g. fabric.splice, npu.eval)
+        target   : section / wrap / model id the op applies to
+        caveats  : optional narrowing strings (recorded; enforced when policy wired)
+
+        Returns
+        -------
+        dict with keys:
+            allowed (bool), audit_id (str|None), reason (str|None),
+            kind (str|None), op, target, caveats
+        """
+        self._require_boot()
+        caveats = list(caveats or [])
+
+        try:
+            decision = self.gate_op(op, target, tenant_id=tenant_id)
+        except ValueError as e:
+            # Unknown op — refuse without touching the gate
+            if self.ledger is not None:
+                self.ledger.record("mint.denied", {
+                    "op": op, "target": target, "caveats": caveats,
+                    "reason": str(e),
+                })
+            return {
+                "allowed": False,
+                "audit_id": None,
+                "reason": str(e),
+                "kind": None,
+                "op": op,
+                "target": target,
+                "caveats": caveats,
+            }
+
+        allowed = bool(getattr(decision, "allowed", False))
+        audit_id = getattr(decision, "audit_id", None)
+        reason = getattr(decision, "reason", None)
+        kind = getattr(decision, "kind", None)
+
+        if self.ledger is not None:
+            self.ledger.record(
+                "mint.allowed" if allowed else "mint.denied",
+                {
+                    "op": op,
+                    "target": target,
+                    "caveats": caveats,
+                    "kind": kind,
+                    "audit_id": audit_id,
+                    "reason": reason,
+                },
+            )
+
+        return {
+            "allowed": allowed,
+            "audit_id": audit_id,
+            "reason": reason,
+            "kind": kind,
+            "op": op,
+            "target": target,
+            "caveats": caveats,
+        }
 
 
 # ── Convenience entry point ────────────────────────────────────────────────────
