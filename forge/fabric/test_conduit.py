@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from fabric.bus import SubstanceBus
 from fabric.gate import FabricGate, Decision
-from fabric.overseer import Overseer, Finding
+from fabric.overseer import Overseer
+from fabric.types import Finding, make_finding
 from fabric.conduit import VectorConduit, VectorMemory, HeuristicSeat, NpuSeat
 
 SECRET = b"conduit-test-key-0000000000000000000"
@@ -30,7 +31,7 @@ def test_loop_closes_feed_judge_command():
     bus.publish("cap.s0", "status", {"state": "drift", "value": 9999})
     findings = conduit.tick()
 
-    assert any(f.kind == "drift" for f in findings)
+    assert any(f.title == "drift" for f in findings)
     assert conduit.stats.corrections_issued == 1     # it acted, through the gate
     assert conduit.stats.ticks == 1
 
@@ -72,15 +73,19 @@ def test_real_npu_seat_swaps_in_without_touching_loop():
 
     class AlwaysCritical:                     # a stand-in 'NPU model'
         def judge(self, observations, memory):
-            return [Finding(section_id="cap.s0", kind="npu_flag",
-                            detail="brain says correct it", severity=3)
-                    for _ in observations]
+            return [make_finding(
+                id="cap.s0",
+                organ="conduit",
+                severity="critical",
+                title="npu_flag",
+                detail="brain says correct it",
+            ) for _ in observations]
 
     conduit.bind_seat(AlwaysCritical())
     bus.publish("cap.s0", "anything", {"x": 1})
     findings = conduit.tick()
 
-    assert findings and findings[0].kind == "npu_flag"
+    assert findings and findings[0].title == "npu_flag"
     assert conduit.stats.corrections_issued == 1
 
 
@@ -92,8 +97,13 @@ def test_low_severity_findings_do_not_act():
 
     class Whisper:
         def judge(self, observations, memory):
-            return [Finding("cap.s0", "note", "just noting", severity=0)
-                    for _ in observations]
+            return [make_finding(
+                id="cap.s0",
+                organ="conduit",
+                severity="info",
+                title="note",
+                detail="just noting",
+            ) for _ in observations]
 
     conduit.bind_seat(Whisper())
     bus.publish("cap.s0", "t", {"x": 1})
@@ -129,7 +139,13 @@ def test_brain_corrections_are_signed_and_audited():
 
     class Nag:
         def judge(self, observations, memory):
-            return [Finding("cap.s0", "drift", "again", severity=3)]
+            return [make_finding(
+                id="cap.s0",
+                organ="conduit",
+                severity="critical",
+                title="drift",
+                detail="again",
+            )]
 
     conduit.bind_seat(Nag())
 
@@ -147,7 +163,7 @@ def test_heuristic_seat_detects_loops():
     seat = HeuristicSeat(loop_threshold=5)
     obs = [{"_section": "cap.s0", "_topic": "spin"} for _ in range(6)]
     findings = seat.judge(obs, VectorMemory())
-    assert any(f.kind == "loop" for f in findings)
+    assert any(f.title == "loop" for f in findings)
 
 
 # ── BURN op — poisoned-vector purge (M4 observer review, risk #3) ─────────────
