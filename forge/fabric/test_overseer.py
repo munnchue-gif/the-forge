@@ -13,7 +13,8 @@ import hashlib
 
 from fabric.bus import SubstanceBus
 from fabric.gate import FabricGate, Decision
-from fabric.overseer import Overseer, Finding
+from fabric.overseer import Overseer
+from fabric.types import Finding, make_finding
 from fabric.capabilities import SpliceCapability
 
 SECRET = b"overseer-test-key-00000000000000000"
@@ -103,8 +104,13 @@ def test_overseer_adapts_on_detected_change():
         out = []
         for e in batch:
             if e.get("state") == "drift":
-                out.append(Finding(section_id=e["_section"], kind="drift",
-                                   detail="value diverged", severity=2))
+                out.append(make_finding(
+                    id=e["_section"],
+                    organ="overseer",
+                    severity="warn",
+                    title="drift",
+                    detail="value diverged",
+                ))
         return out
 
     overseer = Overseer(bus, gate, evaluator=evaluator)
@@ -113,10 +119,10 @@ def test_overseer_adapts_on_detected_change():
     bus.publish("cap.s0", "status", {"state": "drift", "value": 9999})
 
     findings = overseer.tick()
-    assert len(findings) == 1 and findings[0].kind == "drift"
+    assert len(findings) == 1 and findings[0].title == "drift"
 
     # Overseer adapts: commander corrects the drifting section, through the gate.
-    fix = SpliceCapability(region_id=findings[0].section_id, mode="merge",
+    fix = SpliceCapability(region_id=findings[0].id, mode="merge",
                            sections=1, deaf=False)
     d = overseer.commander.reach_in(fix, control_event={"cmd": "recalibrate"})
     assert d.allowed
