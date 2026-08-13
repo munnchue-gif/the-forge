@@ -236,9 +236,11 @@ class Overseer:
             if hasattr(f, "as_dict"):
                 self._feed_log.append(f.as_dict())
             else:
+                # Live Finding fields (id, organ, severity, title, detail)
                 self._feed_log.append({
-                    "section_id": getattr(f, "section_id", None),
-                    "kind": getattr(f, "kind", None),
+                    "id": getattr(f, "id", None),
+                    "organ": getattr(f, "organ", None),
+                    "title": getattr(f, "title", None),
                     "detail": getattr(f, "detail", None),
                     "severity": getattr(f, "severity", None),
                 })
