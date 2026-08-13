@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from fabric.overseer import Finding
+from fabric.types import Finding, make_finding
 from fabric.sandbox import Concoction
 
 
@@ -70,8 +70,13 @@ def rule_dangerous_tools(c: Concoction) -> list[Finding]:
     for t in tools:
         sev = DANGEROUS_TOOLS.get(t)
         if sev:
-            out.append(Finding(section_id=c.concoction_id, kind="dangerous_tool",
-                               detail=f"tool '{t}' present", severity=sev))
+            out.append(make_finding(
+                id=c.concoction_id,
+                organ="judge",
+                severity=sev,
+                title="dangerous_tool",
+                detail=f"tool '{t}' present",
+            ))
     return out
 
 
@@ -80,8 +85,13 @@ def rule_toxic_combos(c: Concoction) -> list[Finding]:
     out: list[Finding] = []
     for combo, sev, why in TOXIC_COMBOS:
         if combo <= tools:
-            out.append(Finding(section_id=c.concoction_id, kind="toxic_combo",
-                               detail=why, severity=sev))
+            out.append(make_finding(
+                id=c.concoction_id,
+                organ="judge",
+                severity=sev,
+                title="toxic_combo",
+                detail=why,
+            ))
     return out
 
 
@@ -92,28 +102,53 @@ def rule_preset_bounds(c: Concoction) -> list[Finding]:
 
     # Must be marked fabric-sealed.
     if presets.get("safety") != "sealed":
-        out.append(Finding(section_id=c.concoction_id, kind="unsealed",
-                           detail="preset 'safety' != 'sealed'", severity=3))
+        out.append(make_finding(
+            id=c.concoction_id,
+            organ="judge",
+            severity=3,
+            title="unsealed",
+            detail="preset 'safety' != 'sealed'",
+        ))
 
     # Temperature sanity (a wildly high temperature = unbounded, unpredictable).
     try:
         temp = float(presets.get("temperature", "0.7"))
         if temp > 1.5:
-            out.append(Finding(section_id=c.concoction_id, kind="preset_out_of_bounds",
-                               detail=f"temperature={temp} > 1.5", severity=2))
+            out.append(make_finding(
+                id=c.concoction_id,
+                organ="judge",
+                severity=2,
+                title="preset_out_of_bounds",
+                detail=f"temperature={temp} > 1.5",
+            ))
     except (TypeError, ValueError):
-        out.append(Finding(section_id=c.concoction_id, kind="preset_malformed",
-                           detail="temperature not a number", severity=2))
+        out.append(make_finding(
+            id=c.concoction_id,
+            organ="judge",
+            severity=2,
+            title="preset_malformed",
+            detail="temperature not a number",
+        ))
 
     # Context ceiling (guards VRAM — RTX 5080 has 16GB).
     try:
         ctx = int(presets.get("max_context", "8192"))
         if ctx > 131072:
-            out.append(Finding(section_id=c.concoction_id, kind="preset_out_of_bounds",
-                               detail=f"max_context={ctx} exceeds ceiling", severity=2))
+            out.append(make_finding(
+                id=c.concoction_id,
+                organ="judge",
+                severity=2,
+                title="preset_out_of_bounds",
+                detail=f"max_context={ctx} exceeds ceiling",
+            ))
     except (TypeError, ValueError):
-        out.append(Finding(section_id=c.concoction_id, kind="preset_malformed",
-                           detail="max_context not an int", severity=2))
+        out.append(make_finding(
+            id=c.concoction_id,
+            organ="judge",
+            severity=2,
+            title="preset_malformed",
+            detail="max_context not an int",
+        ))
     return out
 
 
@@ -123,8 +158,13 @@ def rule_steps_all_allowed(c: Concoction) -> list[Finding]:
     out: list[Finding] = []
     for s in c.steps:
         if not s.would_allow:
-            out.append(Finding(section_id=c.concoction_id, kind="gate_would_deny",
-                               detail=f"{s.action}: {s.reason}", severity=3))
+            out.append(make_finding(
+                id=c.concoction_id,
+                organ="judge",
+                severity=3,
+                title="gate_would_deny",
+                detail=f"{s.action}: {s.reason}",
+            ))
     return out
 
 
@@ -140,21 +180,30 @@ DEFAULT_RULES: list[Rule] = [
 # The judge — runs the rules, returns findings. Use as arena.judge evaluator.
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Live severity rank for Verdict (strings → comparable ints)
+_SEV_RANK = {
+    "info": 1,
+    "warn": 2,
+    "error": 3,
+    "critical": 3,
+}
+
+
 @dataclass
 class Verdict:
     findings: list[Finding]
 
     @property
     def worst(self) -> int:
-        return max((f.severity for f in self.findings), default=0)
+        return max((_SEV_RANK.get(f.severity, 3) for f in self.findings), default=0)
 
     @property
     def clean(self) -> bool:
-        """Behaviorally clean = nothing critical. (severity 3 = block promotion.)"""
+        """Behaviorally clean = nothing critical. (worst == 3 = block promotion.)"""
         return self.worst < 3
 
     def report(self) -> list[dict[str, Any]]:
-        return [{"kind": f.kind, "severity": f.severity, "detail": f.detail}
+        return [{"title": f.title, "severity": f.severity, "detail": f.detail}
                 for f in self.findings]
 
 
