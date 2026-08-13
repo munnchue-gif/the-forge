@@ -16,9 +16,9 @@ import json
 import logging
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
-# from fabric.overseer import Finding
+from fabric.types import Finding, make_finding
 
 logger = logging.getLogger("forge.bind.ollama_capsule")
 
@@ -102,11 +102,11 @@ class OllamaCapsule:
                 sev = int(it.get("severity", 1))
             except (TypeError, ValueError):
                 sev = 1
-            from fabric.overseer import Finding
-            findings.append(Finding(
-                section_id=str(it.get("section", "unknown")),
-                kind=str(it.get("kind", "ollama.concern")),
+            findings.append(make_finding(
+                id=str(it.get("section", "unknown")),
+                organ=str(it.get("kind", "ollama.concern")),
+                severity=sev,
+                title=str(it.get("kind", "ollama.concern")),
                 detail=str(it.get("detail", ""))[:500],
-                severity=max(0, min(3, sev)),
             ))
         return findings
