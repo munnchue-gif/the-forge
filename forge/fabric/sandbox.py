@@ -47,7 +47,8 @@ from typing import Any, Callable
 
 from fabric.gate import FabricGate, Decision, SignedCapability
 from fabric.bus import SubstanceBus
-from fabric.overseer import Overseer, Finding
+from fabric.overseer import Overseer
+from fabric.types import Finding
 from fabric.wrap import WrapStore, Wrap
 from fabric.capabilities import ConformCapability, SpliceCapability, ReclaimCapability
 
@@ -86,7 +87,13 @@ class Concoction:
         allowed under strict production rules and the brain flagged nothing
         critical."""
         steps_ok = all(s.would_allow for s in self.steps)
-        no_critical = all(f.severity < 3 for f in self.findings)
+        # Live severity is str; rank so critical/error block promotion.
+        _rank = {"info": 1, "warn": 2, "error": 3, "critical": 3}
+        def _sev(s):
+            if isinstance(s, int):
+                return max(0, min(3, s))
+            return _rank.get(str(s), 3)  # unknown → critical (fail closed)
+        no_critical = all(_sev(f.severity) < 3 for f in self.findings)
         return steps_ok and no_critical
 
     def transcript(self) -> list[dict[str, Any]]:
