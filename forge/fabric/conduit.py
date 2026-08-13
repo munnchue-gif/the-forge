@@ -41,10 +41,26 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from fabric.gate import FabricGate, GateDecision
-from fabric.overseer import Overseer, Finding
+from fabric.overseer import Overseer
+from fabric.types import Finding, make_finding
 from fabric.capabilities import SpliceCapability
 
 logger = logging.getLogger("forge_ng.conduit")
+
+
+# Live severity rank (str → int) for ACT_THRESHOLD comparisons
+_SEV_RANK = {
+    "info": 1,
+    "warn": 2,
+    "error": 3,
+    "critical": 3,
+}
+
+
+def _sev_rank(sev: str | int) -> int:
+    if isinstance(sev, int):
+        return max(0, min(3, sev))
+    return _SEV_RANK.get(str(sev), 3)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -86,15 +102,25 @@ class HeuristicSeat:
         for e in observations:
             section = e.get("_section", "?")
             if e.get(self._drift_key) == self._drift_value:
-                findings.append(Finding(section_id=section, kind="drift",
-                                        detail="state diverged", severity=2))
+                findings.append(make_finding(
+                    id=section,
+                    organ="conduit",
+                    severity=2,
+                    title="drift",
+                    detail="state diverged",
+                ))
             key = f"{section}:{e.get('_topic')}"
             counts[key] = counts.get(key, 0) + 1
         for key, n in counts.items():
             if n >= self._loop_threshold:
                 sec = key.split(":", 1)[0]
-                findings.append(Finding(section_id=sec, kind="loop",
-                                        detail=f"{n} repeats in one tick", severity=1))
+                findings.append(make_finding(
+                    id=sec,
+                    organ="conduit",
+                    severity=1,
+                    title="loop",
+                    detail=f"{n} repeats in one tick",
+                ))
         return findings
 
 
@@ -203,7 +229,7 @@ class VectorConduit:
     The seat never touches the skeleton; the conduit never thinks. Clean bond.
     """
 
-    #: Findings of at least this severity trigger a real correction command.
+    #: Findings of at least this rank trigger a real correction command.
     ACT_THRESHOLD = 2
 
     def __init__(
@@ -248,17 +274,17 @@ class VectorConduit:
     def _default_corrector(self, finding: Finding) -> SpliceCapability:
         """Default corrective action: dissolve/quiesce the offending section.
         Returns a Capability; the gate decides whether it actually happens."""
-        return SpliceCapability(region_id=finding.section_id, mode="merge",
+        return SpliceCapability(region_id=finding.id, mode="merge",
                                 sections=1, deaf=False)
 
     def _command(self, findings: list[Finding]) -> None:
         for f in findings:
-            if f.severity < self.ACT_THRESHOLD:
+            if _sev_rank(f.severity) < self.ACT_THRESHOLD:
                 continue
             cap = self._corrector(f)
             decision: GateDecision = self._overseer.commander.reach_in(
                 cap,
-                control_event={"reason": f.kind, "detail": f.detail,
+                control_event={"reason": f.title, "detail": f.detail,
                                "severity": f.severity},
                 tenant_id=self._tenant,
             )
@@ -267,7 +293,7 @@ class VectorConduit:
             else:
                 self.stats.corrections_denied += 1
                 logger.warning("correction denied for %s: %s",
-                               f.section_id, decision.reason)
+                               f.id, decision.reason)
 
     # ── HEARTBEAT ──────────────────────────────────────────────────────────────
 
