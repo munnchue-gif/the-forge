@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fabric.gate import FabricGate
 from fabric.wrap import WrapStore
-from fabric.overseer import Finding
+from fabric.types import Finding, make_finding
 from fabric.sandbox import Concoctinator
 
 
@@ -82,8 +82,13 @@ def test_dirty_concoction_blocked_from_promotion():
     c = box.concoct(intent={"presets": {"role": "risky"}}, model_id="m")
 
     def critic(concoction):
-        return [Finding(section_id=concoction.concoction_id, kind="danger",
-                        detail="do not ship", severity=3)]
+        return [make_finding(
+            id=concoction.concoction_id,
+            organ="sandbox",
+            severity="critical",
+            title="danger",
+            detail="do not ship",
+        )]
 
     box.judge(c.concoction_id, critic)
     assert not c.is_clean
