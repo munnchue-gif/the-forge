@@ -4,19 +4,16 @@ forge/fabric/codex_cli.py — Private Codex launcher + talk surface
 Usage (local or over SSH):
 
   # Terminal 1 — start the organ + private socket
-  cd ~/the-forge
-  source .venv/bin/activate
-  export PYTHONPATH=$HOME/the-forge/forge
-  export FORGE_SECRET='dev-only-not-for-prod'
   python -m fabric.codex_cli serve
 
-  # Terminal 2 (or SSH session) — talk to it
-  python -m fabric.codex_cli ask "what is the current status of the fabric?"
+  # Terminal 2
   python -m fabric.codex_cli status
-  python -m fabric.codex_cli feed
-  python -m fabric.codex_cli interactive   # chat loop
+  python -m fabric.codex_cli load-model qwen2.5-coder:7b
+  python -m fabric.codex_cli ask "explain the Gate organ"
+  python -m fabric.codex_cli unload-model
+  python -m fabric.codex_cli interactive
 
-No public listeners. Socket lives at ~/.forge/codex.sock (owner-only).
+No public listeners. Socket: ~/.forge/codex.sock
 """
 
 from __future__ import annotations
@@ -29,23 +26,21 @@ import sys
 import time
 from pathlib import Path
 
-# Ensure fabric is importable when run as python -m fabric.codex_cli
+
 def _boot_paths() -> None:
-    root = Path(__file__).resolve().parents[1]  # .../forge
+    root = Path(__file__).resolve().parents[1]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
+
 _boot_paths()
 
-from fabric.codex import Codex, SealedPathway  # noqa: E402
+from fabric.codex import Codex  # noqa: E402
 from fabric.codex_socket import CodexSocketServer, client_request, socket_path  # noqa: E402
 
 
 def cmd_serve(_: argparse.Namespace) -> int:
-    secret = os.environ.get("FORGE_SECRET", "dev-only-not-for-prod").encode()
-
     def ledger_append(entry: dict) -> None:
-        # Lightweight local log so something is always recorded even without full Kernel
         log = Path.home() / ".forge" / "codex_ledger.jsonl"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "a", encoding="utf-8") as f:
@@ -55,9 +50,11 @@ def cmd_serve(_: argparse.Namespace) -> int:
     server = CodexSocketServer(codex)
     path = server.start()
 
-    print(f"Codex vessel live  vessel_id={codex.status().vessel_id}")
+    s = codex.status()
+    print(f"Codex vessel live  vessel_id={s.vessel_id}")
     print(f"Private socket     {path}")
-    print("Owner-only permissions. No TCP. No public bind.")
+    print("Owner-only. No TCP. No public bind.")
+    print("Commands from other terminal: status | load-model | unload-model | ask | interactive")
     print("Ctrl+C to scrap and exit.")
 
     def _shutdown(*_a: object) -> None:
@@ -89,8 +86,7 @@ def cmd_ask(args: argparse.Namespace) -> int:
     if not resp.get("ok"):
         print(json.dumps(resp, indent=2))
         return 1
-    data = resp["data"]
-    print(data.get("content", ""))
+    print(resp["data"].get("content", ""))
     return 0
 
 
@@ -100,8 +96,21 @@ def cmd_feed(args: argparse.Namespace) -> int:
     return 0 if resp.get("ok") else 1
 
 
+def cmd_load_model(args: argparse.Namespace) -> int:
+    mid = args.model or "qwen2.5-coder:7b"
+    resp = client_request("load_model", model_id=mid)
+    print(json.dumps(resp, indent=2))
+    return 0 if resp.get("ok") else 1
+
+
+def cmd_unload_model(_: argparse.Namespace) -> int:
+    resp = client_request("unload_model")
+    print(json.dumps(resp, indent=2))
+    return 0 if resp.get("ok") else 1
+
+
 def cmd_interactive(_: argparse.Namespace) -> int:
-    print("Codex interactive (private socket). Empty line or Ctrl+C to exit.")
+    print("Codex interactive. Empty line or Ctrl+C to exit.")
     print(f"Socket: {socket_path()}")
     while True:
         try:
@@ -129,7 +138,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("feed", help="Show feed").add_argument("--since", type=float, default=0.0)
     ask_p = sub.add_parser("ask", help="Single question")
     ask_p.add_argument("prompt", nargs="?", default="")
-    sub.add_parser("interactive", help="Chat loop over the private socket")
+    load_p = sub.add_parser("load-model", help="Hot-load a local Ollama model")
+    load_p.add_argument("model", nargs="?", default="qwen2.5-coder:7b")
+    sub.add_parser("unload-model", help="Unload model and free VRAM")
+    sub.add_parser("interactive", help="Chat loop")
 
     args = p.parse_args(argv)
     if args.cmd == "serve":
@@ -140,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_ask(args)
     if args.cmd == "feed":
         return cmd_feed(args)
+    if args.cmd == "load-model":
+        return cmd_load_model(args)
+    if args.cmd == "unload-model":
+        return cmd_unload_model(args)
     if args.cmd == "interactive":
         return cmd_interactive(args)
     return 1
