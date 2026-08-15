@@ -2,17 +2,16 @@
 forge/fabric/codex_socket.py — Private transport for Codex
 
 Unix domain socket only. No TCP. No public bind. No Cloudflare.
-No long-lived watcher listeners beyond the single private socket.
-
 Default path: ~/.forge/codex.sock
-Override with FORGE_CODEX_SOCK environment variable.
 
 Protocol (newline-delimited JSON):
     → {"cmd": "status"}
     → {"cmd": "ask", "prompt": "..."}
-    → {"cmd": "propose_tool", "name": "...", "description": "...", "interface": {}}
-    → {"cmd": "request_sear", "kind": "...", "description": "..."}
-    → {"cmd": "invoke_seared", "kind": "...", "payload": {}}
+    → {"cmd": "load_model", "model_id": "qwen2.5-coder:7b"}
+    → {"cmd": "unload_model"}
+    → {"cmd": "propose_tool", ...}
+    → {"cmd": "request_sear", ...}
+    → {"cmd": "invoke_seared", ...}
     → {"cmd": "feed", "since": 0.0}
     → {"cmd": "scrap"}
     → {"cmd": "ping"}
@@ -31,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fabric.codex import Codex, CodexDenied, SealedPathway
+from fabric.codex import Codex
 
 
 DEFAULT_SOCK = Path.home() / ".forge" / "codex.sock"
@@ -43,11 +42,6 @@ def socket_path() -> Path:
 
 
 class CodexSocketServer:
-    """
-    Single private Unix-domain socket server for one Codex vessel.
-    Accepts one connection at a time by design (simple, private, no fan-out).
-    """
-
     def __init__(self, codex: Codex, path: Path | None = None) -> None:
         self.codex = codex
         self.path = path or socket_path()
@@ -62,13 +56,14 @@ class CodexSocketServer:
 
         self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._sock.bind(str(self.path))
-        # Owner-only access
         os.chmod(self.path, stat.S_IRUSR | stat.S_IWUSR)
         self._sock.listen(1)
         self._sock.settimeout(1.0)
 
         self._stop.clear()
-        self._thread = threading.Thread(target=self._serve, name="codex-socket", daemon=True)
+        self._thread = threading.Thread(
+            target=self._serve, name="codex-socket", daemon=True
+        )
         self._thread.start()
         return self.path
 
@@ -107,7 +102,7 @@ class CodexSocketServer:
 
     def _handle(self, conn: socket.socket) -> None:
         buf = b""
-        conn.settimeout(30.0)
+        conn.settimeout(120.0)  # allow model generate
         while True:
             try:
                 chunk = conn.recv(65536)
@@ -132,23 +127,37 @@ class CodexSocketServer:
                 except OSError:
                     return
 
+    def _status_dict(self) -> dict[str, Any]:
+        s = self.codex.status()
+        return {
+            "vessel_id": s.vessel_id,
+            "organ": s.organ,
+            "live": s.live,
+            "seared_pathways": list(s.seared_pathways),
+            "open_results": s.open_results,
+            "feed_length": s.feed_length,
+            "isolation_state": s.isolation_state,
+            "model_id": s.model_id,
+            "model_loaded": s.model_loaded,
+            "timestamp": s.timestamp,
+        }
+
     def _dispatch(self, req: dict[str, Any]) -> dict[str, Any]:
         cmd = req.get("cmd")
         if cmd == "ping":
             return {"ok": True, "data": {"pong": True, "ts": time.time()}}
 
         if cmd == "status":
-            s = self.codex.status()
-            return {"ok": True, "data": {
-                "vessel_id": s.vessel_id,
-                "organ": s.organ,
-                "live": s.live,
-                "seared_pathways": list(s.seared_pathways),
-                "open_results": s.open_results,
-                "feed_length": s.feed_length,
-                "isolation_state": s.isolation_state,
-                "timestamp": s.timestamp,
-            }}
+            return {"ok": True, "data": self._status_dict()}
+
+        if cmd == "load_model":
+            mid = req.get("model_id") or "qwen2.5-coder:7b"
+            self.codex.load_model(str(mid))
+            return {"ok": True, "data": self._status_dict()}
+
+        if cmd == "unload_model":
+            self.codex.unload_model()
+            return {"ok": True, "data": self._status_dict()}
 
         if cmd == "ask":
             prompt = str(req.get("prompt", ""))
@@ -199,6 +208,7 @@ class CodexSocketServer:
                 "vessel_id": s.vessel_id,
                 "live": s.live,
                 "isolation_state": s.isolation_state,
+                "model_loaded": s.model_loaded,
             }}
 
         if cmd == "list_seared":
@@ -231,7 +241,6 @@ class CodexSocketServer:
 
 
 def client_request(cmd: str, path: Path | None = None, **kwargs: Any) -> dict[str, Any]:
-    """One-shot client helper for CLI / SSH sessions."""
     sock_path = path or socket_path()
     if not sock_path.exists():
         return {"ok": False, "error": f"socket not found: {sock_path}"}
@@ -241,7 +250,7 @@ def client_request(cmd: str, path: Path | None = None, **kwargs: Any) -> dict[st
 
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        s.settimeout(30.0)
+        s.settimeout(120.0)
         s.connect(str(sock_path))
         s.sendall(data)
         buf = b""
