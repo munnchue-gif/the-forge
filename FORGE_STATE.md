@@ -41,7 +41,7 @@ findings, and only through the gate."
 | EmbeddedTailor | forge/fabric/tailor.py | GREEN | built M4; filename label stale |
 | Capsule | forge/fabric/capsule.py | GREEN | merged 2026-08-15 |
 | Hub | forge/fabric/hub.py | GREEN | merged 2026-08-15 |
-| Kernel | forge/fabric/kernel.py | YELLOW | factory table broken, see 5 |
+| Kernel | forge/fabric/kernel.py | GREEN | factory table fixed 2026-08-17 |
 | Ledger | forge/fabric/ledger.py | YELLOW | DIVERGED +20 cand / +6 spine |
 | VectorConduit | forge/fabric/conduit.py | YELLOW | HeuristicSeat live |
 | Bind | forge/fabric/bind/ | RED | 5 stale tests, see 5 |
@@ -60,7 +60,7 @@ Capabilities: Spawn, Mount, Egress, NpuEval, Conform, Splice, Reclaim
 
 ## 5. KNOWN BROKEN
 
-BASELINE: 11 failed, 123 passed. Any other number = you caused it.
+BASELINE: 9 failed, 125 passed. Any other number = you caused it.
 
 1. forge/fabric/kernel.py:80-82 - factory table passes kwargs the dataclasses
    reject. EgressCapability(destination=...) and NpuEvalCapability(input_sha=...)
