@@ -76,17 +76,20 @@ _OP_CAPS: dict[str, Any] = {
         capsule_id=t, script_sha=_EMPTY_SHA,
         cpu_quota="50%", mem_limit="512m", network=False),
     "coupler.mount": lambda t: MountCapability(
-        capsule_id=t, agent_name="agent"),
+        capsule_id=t, agent_name="agent", slot_cap_hash=_EMPTY_SHA),
     "net.egress": lambda t: EgressCapability(
-        destination=t, protocol="https", port=443),
+        capsule_id=t,
+        dest_host=t.rsplit(":",1)[0] if ":" in t else t,
+        dest_port=int(t.rsplit(":",1)[1]) if ":" in t and t.rsplit(":",1)[1].isdigit() else 443,
+        payload_sha=_EMPTY_SHA),
     "npu.eval": lambda t: NpuEvalCapability(
-        model_id=t, input_sha=_EMPTY_SHA),
+        capsule_id=t, model_id=t, vector_sha=_EMPTY_SHA),
     "fabric.conform": lambda t: ConformCapability(
-        region_id=t, target_shape="default"),
+        capsule_id=t, model_id=t, wrap_sha=_EMPTY_SHA),
     "fabric.splice": lambda t: SpliceCapability(
-        region_id=t, mode="split", sections=1, deaf=True),
+        region_id=t, mode="split", sections=2, deaf=True),
     "fabric.reclaim": lambda t: ReclaimCapability(
-        wrap_sha=_EMPTY_SHA),
+        capsule_id=t, keep_vectors=True, vector_sha=_EMPTY_SHA),
 }
 
 
